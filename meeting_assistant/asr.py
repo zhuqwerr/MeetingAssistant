@@ -4,6 +4,8 @@ import asyncio
 import os
 import threading
 import re
+from pathlib import Path
+import sys
 
 from .audio import AudioJob, RATE
 from .config import ROOT, Settings
@@ -17,6 +19,7 @@ class Transcriber:
         self.error = ""
         self.lock = asyncio.Lock()
         self.decode_lock = threading.Lock()
+        self.dll_handles = []
 
     async def prepare(self, settings: Settings):
         signature = (settings.asr_model, settings.asr_device)
@@ -26,6 +29,8 @@ class Transcriber:
             self.status, self.error = "loading", ""
             try:
                 model = await asyncio.to_thread(self._load, settings)
+                if hasattr(self.model, "close"):
+                    await asyncio.to_thread(self.model.close)
                 self.model, self.signature, self.status = model, signature, "ready"
             except Exception as exc:
                 self.status = "error"
@@ -33,8 +38,43 @@ class Transcriber:
                 raise ValueError(self.error) from exc
 
     def _load(self, settings):
+        if settings.asr_device == "cuda" and sys.platform == "win32":
+            from .gpu_worker import GPUModel
+            return GPUModel(settings)
+        return self._load_native(settings)
+
+    def close(self):
+        if hasattr(self.model, "close"):
+            self.model.close()
+        self.model = None
+        self.signature = None
+        self.status = "idle"
+
+    def _load_native(self, settings):
+        if settings.asr_device == "cuda" and sys.platform == "win32":
+            # NVIDIA's optional pip wheels keep DLLs outside the system PATH.
+            # Keep handles alive for the model's entire lifetime.
+            for root in sys.path:
+                vendor = Path(root) / "nvidia"
+                if vendor.is_dir():
+                    for folder in vendor.glob("*/bin"):
+                        path = str(folder.resolve())
+                        self.dll_handles.append(os.add_dll_directory(path))
+                        # CTranslate2 uses LoadLibrary, which also needs the
+                        # process PATH (this does not change Windows settings).
+                        if path not in os.environ.get("PATH", "").split(os.pathsep):
+                            os.environ["PATH"] = path + os.pathsep + os.environ.get("PATH", "")
         from faster_whisper import WhisperModel
-        return WhisperModel(settings.asr_model, device=settings.asr_device,
+        from faster_whisper.utils import download_model
+        from huggingface_hub.errors import LocalEntryNotFoundError
+        model_path = settings.asr_model
+        try:
+            cached = Path(download_model(settings.asr_model, cache_dir=str(ROOT / "models"), local_files_only=True))
+            if all((cached / name).is_file() for name in ("model.bin", "config.json", "tokenizer.json")):
+                model_path = str(cached)
+        except LocalEntryNotFoundError:
+            pass
+        return WhisperModel(model_path, device=settings.asr_device,
                             compute_type="int8" if settings.asr_device == "cpu" else "float16",
                             cpu_threads=min(8, max(2, (os.cpu_count() or 4) // 2)),
                             download_root=str(ROOT / "models"))

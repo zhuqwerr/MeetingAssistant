@@ -55,6 +55,8 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
                 pass
         for task in list(pending):
             task.cancel()
+        if hasattr(asr, "close") and not active():
+            await asyncio.to_thread(asr.close)
 
     app = FastAPI(title="MeetingAssistant", lifespan=lifespan)
     app.state.store, app.state.sessions, app.state.config = store, sessions, config

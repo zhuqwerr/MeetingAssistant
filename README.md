@@ -68,6 +68,8 @@ npm run build
 
 真实语音模型验证：`.venv/Scripts/python.exe scripts/smoke_asr.py <音频路径> --model small --language zh`。单元/集成测试使用受控模型替身验证调度和协议，不代表真实识别或摘要质量。
 
+Windows NVIDIA GPU 可选安装：`.venv/Scripts/python.exe -m pip install -e ".[cuda]"`，重启服务后在设置中选择 CUDA。程序会加载虚拟环境内 NVIDIA 运行库，无需修改系统 PATH。用 `scripts/smoke_asr.py <音频路径> --model large-v3-turbo --device cuda --language zh` 对同一段录音测试速度和内容，再决定是否切换；更大模型仍可能误识别或产生幻觉，不能代替人工核对。
+
 模块：`audio.py` 采集/分段，`asr.py` 本地识别，`session.py` 任务生命周期与增量总结，`summary.py` 模型接口，`storage.py` 本地持久化，`app.py` HTTP/SSE，`frontend/src/` React 界面。
 
 ## 参考
