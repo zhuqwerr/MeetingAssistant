@@ -1,8 +1,10 @@
+import json
 import sys
 
 from fastapi.testclient import TestClient
 
 from meeting_assistant.app import create_app
+from meeting_assistant.config import ConfigStore, Settings
 
 
 def test_config_persistence_secret_redaction_and_origin_guard(tmp_path):
@@ -39,3 +41,22 @@ def test_history_and_export_survive_new_app_instance(tmp_path):
         assert "01:02" in exported.text and "决定周五上线" in exported.text
         assert "attachment" in exported.headers["content-disposition"]
         assert client.get("/api/meetings/missing").status_code == 404
+
+
+def test_fresh_config_defaults_to_gpu_only_when_cuda_wheels_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: True)
+    enabled = ConfigStore(tmp_path / "gpu")
+    assert (enabled.settings.asr_model, enabled.settings.asr_device) == ("large-v3-turbo", "cuda")
+    monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: False)
+    fallback = ConfigStore(tmp_path / "cpu")
+    assert (fallback.settings.asr_model, fallback.settings.asr_device) == ("small", "cpu")
+
+
+def test_saved_asr_choice_is_not_replaced_by_the_cuda_default(tmp_path, monkeypatch):
+    monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: True)
+    saved = Settings(asr_model="small", asr_device="cpu")
+    folder = tmp_path / "saved"
+    folder.mkdir()
+    (folder / "settings.json").write_text(json.dumps({"settings": saved.model_dump(), "protected_key": None}), encoding="utf-8")
+    store = ConfigStore(folder)
+    assert (store.settings.asr_model, store.settings.asr_device) == ("small", "cpu")

@@ -15,6 +15,27 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("MEETING_ASSISTANT_DATA", ROOT / "data"))
 
 
+def cuda_runtime_installed() -> bool:
+    """True when the Windows CUDA wheels are installed. Does not load native libraries."""
+    if sys.platform != "win32":
+        return False
+    for root in sys.path:
+        vendor = Path(root) / "nvidia"
+        if not vendor.is_dir():
+            continue
+        names = {path.parent.name.lower() for path in vendor.glob("*/bin")}
+        if any(name.startswith("cublas") for name in names) and any("cudnn" in name for name in names):
+            return True
+    return False
+
+
+def preferred_asr() -> tuple[str, str]:
+    # large-v3-turbo on CPU is slower than realtime, so it is only the default with CUDA.
+    if cuda_runtime_installed():
+        return "large-v3-turbo", "cuda"
+    return "small", "cpu"
+
+
 class Settings(BaseModel):
     asr_model: Literal["tiny", "base", "small", "medium", "large-v3-turbo"] = "small"
     asr_device: Literal["cpu", "cuda"] = "cpu"
@@ -61,7 +82,8 @@ class ConfigStore:
     def __init__(self, folder: Path = DATA):
         folder.mkdir(parents=True, exist_ok=True)
         self.path = folder / "settings.json"
-        self.settings = Settings()
+        model, device = preferred_asr()
+        self.settings = Settings(asr_model=model, asr_device=device)
         self.key = os.environ.get("MEETING_ASSISTANT_API_KEY", "")
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding="utf-8"))

@@ -34,7 +34,7 @@ export function SettingsDialog({ settings, health, devices, microphone, speaker,
     <div className="settings-body">
       <section><h3>本地语音转写</h3><p className="helper">音频在本机识别。首次使用会下载所选模型。</p>
         <div className="form-grid"><label>语音模型<select value={draft.asr_model} onChange={e => update({ asr_model: e.target.value })}>
-          <option value="tiny">Tiny · 快速验证</option><option value="base">Base · 轻量</option><option value="small">Small · 默认</option><option value="medium">Medium · 更高准确率</option><option value="large-v3-turbo">Large v3 Turbo</option>
+          <option value="tiny">Tiny · 快速验证</option><option value="base">Base · 轻量</option><option value="small">Small · 无 CUDA 时默认</option><option value="medium">Medium · 更高准确率</option><option value="large-v3-turbo">Large v3 Turbo · 已装 CUDA 时默认</option>
         </select></label><label>计算设备<select value={draft.asr_device} onChange={e => update({ asr_device: e.target.value })}><option value="cpu">CPU · 无需显卡</option><option value="cuda">NVIDIA CUDA · 需 CUDA 12 / cuDNN 9</option></select></label></div>
         <label>会议术语<textarea rows={2} placeholder="例如：项目名称、人名、专业术语，用逗号分隔" maxLength={1500} value={draft.vocabulary} onChange={e => update({ vocabulary: e.target.value })}/></label>
         <button className="secondary small" disabled={!!busy || health?.asr.status === 'loading'} onClick={() => void act('model')}><Download size={15}/>{health?.asr.status === 'loading' ? '模型准备中…' : '保存并准备模型'}</button>

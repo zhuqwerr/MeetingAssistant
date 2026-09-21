@@ -17,7 +17,7 @@ cd E:\workspace\MeetingAssistant
 
 ## 第一次使用
 
-1. 打开“设置”，选择本地转写模型。默认 Small / CPU；Tiny 可用于快速验证。首次使用从 Hugging Face 下载模型，缓存到 `models/`。可先点击“保存并准备模型”。未准备好时不会开始采集。
+1. 打开“设置”，选择本地转写模型。没有 NVIDIA CUDA 时默认 Small / CPU；已安装 CUDA 可选依赖时，新的本机配置默认 Large v3 Turbo / CUDA。已保存的配置不会被改写。Tiny 可用于快速验证。首次使用从 Hugging Face 下载模型，缓存到 `models/`。可先点击“保存并准备模型”。未准备好时不会开始采集。
 2. 配置摘要服务并点击“测试摘要连接”：
    - **本地 Ollama**：先安装并启动 Ollama，再运行 `ollama pull qwen3:4b`。地址 `http://127.0.0.1:11434`，模型名与本地安装的一致；也可使用你已安装的其他模型。
    - **兼容 API**：填写服务商的 chat completions 根地址（通常以 `/v1` 结尾）、模型名和 API 密钥。应用会追加 `/chat/completions`。只发送文字，不发送音频；是否留存文字由所选服务决定。
@@ -31,7 +31,7 @@ cd E:\workspace\MeetingAssistant
 ## 第一版边界
 
 - “实时”是短段识别：静音处提前提交，连续讲话最多每 4 秒提交一次，再加模型推理、排队耗时。不是逐字流式 ASR，也不保证 1 秒出字。
-- 使用 faster-whisper / CTranslate2，默认 CPU int8；中文术语可在设置里提供提示。短片段边界、人名、噪声和多人重叠仍可能误识别。
+- 使用 faster-whisper / CTranslate2。CPU 为 int8，CUDA 为 float16。中文术语可在设置里提供提示。短片段边界、人名、噪声和多人重叠仍可能误识别。
 - 麦克风与系统声音分别识别并按音频时间排序，来源标签不等于发言人识别；第一版没有回声消除、说话人分离或提问辅助。
 - 摘要是累计状态 + 新转写，支持条目来源跳转；引用表示输入证据，仍需人工核对模型推断。第一版没有全文会后重审、自动撤销已压缩错误或摘要编辑。
 - 声音始终保存为本地 WAV。遇到识别队列过载会明确停止采集并提示，原始音频仍保留；第一版未提供音频文件重新导入界面。
@@ -68,7 +68,7 @@ npm run build
 
 真实语音模型验证：`.venv/Scripts/python.exe scripts/smoke_asr.py <音频路径> --model small --language zh`。单元/集成测试使用受控模型替身验证调度和协议，不代表真实识别或摘要质量。
 
-Windows NVIDIA GPU 可选安装：`.venv/Scripts/python.exe -m pip install -e ".[cuda]"`，重启服务后在设置中选择 CUDA。程序会加载虚拟环境内 NVIDIA 运行库，无需修改系统 PATH。用 `scripts/smoke_asr.py <音频路径> --model large-v3-turbo --device cuda --language zh` 对同一段录音测试速度和内容，再决定是否切换；更大模型仍可能误识别或产生幻觉，不能代替人工核对。
+Windows NVIDIA GPU 可选安装：`.venv/Scripts/python.exe -m pip install -e ".[cuda]"`。安装后，尚未保存过配置时默认使用 Large v3 Turbo 和 CUDA。程序会加载虚拟环境内 NVIDIA 运行库，无需修改系统 PATH。Windows 上 CUDA 识别在独立进程中运行，避免原生库退出时影响会议服务；切换模型会先释放上一份模型。同一模型在 CPU 上慢于实时，不用于当前会议识别。更大模型仍可能误识别或产生幻觉，不能代替人工核对。
 
 模块：`audio.py` 采集/分段，`asr.py` 本地识别，`session.py` 任务生命周期与增量总结，`summary.py` 模型接口，`storage.py` 本地持久化，`app.py` HTTP/SSE，`frontend/src/` React 界面。
 

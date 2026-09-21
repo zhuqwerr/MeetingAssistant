@@ -27,10 +27,15 @@ class Transcriber:
             if self.model is not None and self.signature == signature:
                 return
             self.status, self.error = "loading", ""
+            previous = self.model
+            # Drop the reference before the next load so a GPU worker releases
+            # VRAM before another native model is created.
+            self.model, self.signature = None, None
             try:
+                if hasattr(previous, "close"):
+                    await asyncio.to_thread(previous.close)
+                previous = None
                 model = await asyncio.to_thread(self._load, settings)
-                if hasattr(self.model, "close"):
-                    await asyncio.to_thread(self.model.close)
                 self.model, self.signature, self.status = model, signature, "ready"
             except Exception as exc:
                 self.status = "error"
