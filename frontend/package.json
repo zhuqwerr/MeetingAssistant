@@ -1,0 +1,6 @@
+{
+  "name": "meeting-assistant-ui", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": {"dev": "vite --host 127.0.0.1 --port 5179 --strictPort", "build": "tsc -b && vite build", "preview": "vite preview --host 127.0.0.1 --port 5179"},
+  "dependencies": {"react": "^19.0.0", "react-dom": "^19.0.0", "lucide-react": "^0.468.0"},
+  "devDependencies": {"@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "@vitejs/plugin-react": "^4.3.4", "typescript": "~5.7.3", "vite": "^6.1.0"}
+}
