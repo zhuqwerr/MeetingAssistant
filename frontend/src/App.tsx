@@ -61,9 +61,12 @@ export default function App() {
   const summarize = () => action(async () => { if (meeting) await api(`/meetings/${meeting.id}/summarize`, 'POST'); });
   const level = Math.min(1, (state?.level ?? 0) * 12);
   return <>
-    <header className="topbar"><a className="brand" href="/" aria-label="MeetingAssistant 首页"><AudioLines size={32} strokeWidth={2.7}/><span>MeetingAssistant</span></a><div className="header-actions"><span className="local-badge"><i/>本地转写</span><span className="header-divider"/><button className="icon-button history-button" aria-label="会议记录" title="会议记录" disabled={active || busy} onClick={() => void openHistory()}><History size={20}/></button><button className="secondary settings-button" disabled={active || busy} onClick={() => void openSettings()}><SettingsIcon size={18}/>设置</button></div></header>
+    <header className="topbar">
+      <a className="brand" href="/" aria-label="MeetingAssistant 首页"><AudioLines size={32} strokeWidth={2.7}/><span>MeetingAssistant</span></a>
+      <div className="topbar-context" aria-live="polite"><strong>{meeting?.title || '让讨论留下重点。'}</strong><span>{meeting ? (statusLabels[status ?? ''] ?? '会议记录') : '实时记录每一句话，持续整理会议脉络。'}</span></div>
+      <div className="header-actions"><span className="local-badge"><i/>本地转写</span><span className="header-divider"/><button className="icon-button history-button" aria-label="会议记录" title="会议记录" disabled={active || busy} onClick={() => void openHistory()}><History size={20}/></button><button className="secondary settings-button" disabled={active || busy} onClick={() => void openSettings()}><SettingsIcon size={18}/>设置</button></div>
+    </header>
     <main className={meeting ? 'meeting-view' : 'setup-view'}>
-      {!meeting && <div className="intro"><h1>让讨论留下重点。</h1><p>实时记录每一句话，持续整理会议脉络。</p></div>}
       <form className="controls" onSubmit={e => { e.preventDefault(); if (!active) void start(); }}>
         <label className="title-field"><span className="sr-only">会议名称</span><input maxLength={120} placeholder="未命名会议" value={active ? meeting?.title ?? title : title} onChange={e => setTitle(e.target.value)} disabled={active}/></label>
         <label className="source-field"><Mic size={20}/><span className="sr-only">音频来源</span><select value={active ? meeting?.source ?? source : source} onChange={e => setSource(e.target.value)} disabled={active}><option value="mic">麦克风</option><option value="system">系统声音</option><option value="mixed">麦克风＋系统声音</option></select></label>

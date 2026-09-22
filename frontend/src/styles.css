@@ -59,13 +59,15 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 .ask-drawer input{flex:1}
 .ask-drawer form .primary{width:42px;min-height:42px;padding:0}
 
+.topbar{position:relative}
+.topbar-context{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(42vw,620px);text-align:center;pointer-events:none;line-height:1.25}
+.topbar-context strong{display:block;font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-context span{display:block;margin-top:4px;color:#7b8593;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* Layout refinement: keep the current visual language while using the window better. */
 @media(min-width:901px){
   .topbar{height:68px;padding-inline:clamp(24px,2.5vw,44px)}
   main{max-width:1800px;padding:20px clamp(24px,2.5vw,44px) 24px}
-  .setup-view .intro{padding:24px 0 20px}
-  .setup-view .intro h1{font-size:42px}
-  .setup-view .intro p{font-size:18px;margin-top:6px}
   .controls{grid-template-columns:minmax(260px,1fr) 210px 170px 210px;gap:12px;margin-bottom:14px}
   .controls input,.controls select,.controls button{height:48px;font-size:15px}
   .controls .primary{font-size:16px}
@@ -74,7 +76,7 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
   .status-strip{min-height:48px;padding:5px 16px;margin-bottom:14px}
   .workspace{grid-template-columns:minmax(0,1.82fr) minmax(340px,1fr);gap:16px}
   .panel{height:calc(100dvh - 232px);min-height:520px;padding-inline:20px}
-  .setup-view .panel{height:calc(100dvh - 382px);min-height:500px}
+  .setup-view .panel{height:calc(100dvh - 232px);min-height:520px}
   .panel-header{height:62px}
   .analysis-panel .panel-header{min-height:62px;padding:10px 0 8px}
   .analysis-tabs{gap:26px}
@@ -92,10 +94,17 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 
 @media(min-width:1500px){
   .panel{height:calc(100dvh - 232px)}
-  .setup-view .panel{height:calc(100dvh - 382px)}
+  .setup-view .panel{height:calc(100dvh - 232px)}
+}
+
+@media(max-width:1050px){
+  .topbar-context{width:30vw}
+  .topbar-context span{display:none}
+  .topbar-context strong{font-size:14px}
 }
 
 @media(max-width:900px){
+  .topbar-context{display:none}
   .controls{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:17px}
   .title-field{grid-column:1/-1}
   .controls .primary{grid-column:1/-1}
@@ -116,5 +125,5 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 }
 
 @media(min-width:901px){
-  .meeting-view:has(.notice) .panel{height:calc(100dvh - 314px);min-height:440px}
+  main:has(.notice) .panel{height:calc(100dvh - 314px);min-height:440px}
 }
