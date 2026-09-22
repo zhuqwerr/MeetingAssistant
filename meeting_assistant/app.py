@@ -222,7 +222,7 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
             cursor, summary_id = max(0, after), None
             while not await request.is_disconnected():
                 session = sessions.get(mid)
-                state = session.snapshot() if session else {"id": mid, "status": meeting["status"], "duration": meeting["duration"], "level": 0, "backlog": 0, "summary_busy": False, "error": "", "summary_error": ""}
+                state = session.snapshot() if session else {"id": mid, "title": meeting["title"], "status": meeting["status"], "duration": meeting["duration"], "level": 0, "backlog": 0, "summary_busy": False, "error": "", "summary_error": ""}
                 new = store.segments(mid, cursor)
                 if new:
                     cursor = new[-1]["id"]

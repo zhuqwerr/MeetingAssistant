@@ -23,6 +23,7 @@ class RecordingSummarizer:
         self.modes = []
         self.cited = []
         self.fail = False
+        self.title = ""
 
     async def generate(self, settings, key, previous, segments, valid, mode="incremental", cited_segments=None):
         self.calls.append([s["id"] for s in segments])
@@ -30,7 +31,22 @@ class RecordingSummarizer:
         self.cited.append([s["id"] for s in (cited_segments or [])])
         if self.fail:
             raise ValueError("network unavailable")
-        return {"summary": "讨论中", "topics": [], "key_points": [{"text": "新增信息", "sources": [segments[-1]["id"]]}], "todos": [], "suggestions": []}
+        return {"title": self.title, "summary": "讨论中", "topics": [], "key_points": [{"text": "新增信息", "sources": [segments[-1]["id"]]}], "todos": [], "suggestions": []}
+
+
+async def test_ai_names_only_an_unnamed_meeting(tmp_path):
+    store, config, llm = Storage(tmp_path), ConfigStore(tmp_path), RecordingSummarizer()
+    llm.title = "会议标题：顺丰接口联调。"
+    unnamed = Session(StartRequest(), store, config, FakeASR(), llm)
+    store.add_segment(unnamed.id, 0, 5, "讨论顺丰接口联调计划", "mic")
+    await unnamed.summarize()
+    assert store.get(unnamed.id)["title"] == "顺丰接口联调"
+    assert unnamed.snapshot()["title"] == "顺丰接口联调"
+
+    named = Session(StartRequest(title="产品周会"), store, config, FakeASR(), llm)
+    store.add_segment(named.id, 0, 5, "讨论顺丰接口联调计划", "mic")
+    await named.summarize()
+    assert store.get(named.id)["title"] == "产品周会"
 
 
 async def test_incremental_summary_retries_without_advancing_cursor(tmp_path):

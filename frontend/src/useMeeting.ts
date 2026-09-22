@@ -26,10 +26,11 @@ export function useMeeting() {
       setConnected(true); setState(data.state);
       setMeeting(previous => {
         if (!previous || previous.id !== id) return previous;
-        if (!data.segments.length && !data.summary) return previous;
+        const title = data.state.title || previous.title;
+        if (!data.segments.length && !data.summary && title === previous.title) return previous;
         const merged = new Map(previous.segments.map(s => [s.id, s]));
         for (const segment of data.segments) merged.set(segment.id, segment);
-        return { ...previous, segments: [...merged.values()].sort((a, b) => a.start - b.start || a.id - b.id), summary: data.summary ?? previous.summary };
+        return { ...previous, title, segments: [...merged.values()].sort((a, b) => a.start - b.start || a.id - b.id), summary: data.summary ?? previous.summary };
       });
     };
     return () => stream.close();

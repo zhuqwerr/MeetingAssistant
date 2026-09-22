@@ -61,6 +61,13 @@ def test_reconcile_window_keeps_recent_audio_and_older_citations():
     assert [item["id"] for item in cited] == [1]
 
 
+async def test_summary_can_propose_a_meeting_title():
+    content = {"title": "支付系统上线安排", "summary": "讨论上线", "topics": [], "key_points": [], "todos": [], "suggestions": []}
+    client = Summarizer(httpx.MockTransport(lambda _: httpx.Response(200, json={"message": {"content": json.dumps(content, ensure_ascii=False)}})))
+    result = await client.generate(Settings(), "", None, [{"id": 1, "text": "讨论支付系统上线"}], {1})
+    assert result["title"] == "支付系统上线安排"
+
+
 def test_question_retrieval_prefers_overlapping_and_cited_lines():
     segments = [
         {"id": 1, "end": 1, "text": "京东企业账号由张明申请"},

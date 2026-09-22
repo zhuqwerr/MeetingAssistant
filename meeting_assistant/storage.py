@@ -52,6 +52,10 @@ class Storage:
         with self.lock, self.db:
             self.db.execute("UPDATE meetings SET status=?,duration=? WHERE id=?", (status, duration, mid))
 
+    def update_title(self, mid: str, title: str):
+        with self.lock, self.db:
+            self.db.execute("UPDATE meetings SET title=? WHERE id=?", (title, mid))
+
     def add_segment(self, mid: str, start: float, end: float, text: str, source: str):
         with self.lock, self.db:
             cursor = self.db.execute("INSERT INTO segments(meeting_id,start,end,text,source) VALUES(?,?,?,?,?)", (mid, start, end, text, source))

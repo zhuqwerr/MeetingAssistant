@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Literal
 
@@ -27,7 +28,10 @@ class Session:
         self.settings = config.settings.model_copy()
         self.key = config.key
         self.asr, self.summarizer = asr, summarizer
-        self.id = meeting_id or store.create(request.title.strip() or "未命名会议", request.source, request.language)
+        initial_title = request.title.strip() or "未命名会议"
+        self.id = meeting_id or store.create(initial_title, request.source, request.language)
+        self.title = initial_title
+        self.auto_title = initial_title == "未命名会议"
         self.status = "ended" if meeting_id else "starting"
         self.error = ""
         self.summary_error = ""
@@ -44,7 +48,7 @@ class Session:
         self.run_task: asyncio.Task | None = None
 
     def snapshot(self):
-        return {"id": self.id, "status": self.status, "error": self.error, "summary_error": self.summary_error,
+        return {"id": self.id, "title": self.title, "status": self.status, "error": self.error, "summary_error": self.summary_error,
                 "summary_busy": self.summary_busy, "level": self.level,
                 "duration": time.monotonic() - self.started if self.started and self.status == "recording" else self.elapsed,
                 "backlog": self.jobs.qsize()}
@@ -207,6 +211,18 @@ class Session:
             content = await self.summarizer.generate(
                 self.settings, self.key, previous["content"] if previous else None, batch, valid_ids,
             )
+            self._apply_generated_title(content)
             previous = self.store.add_summary(self.id, batch[-1]["id"], content)
             remaining = remaining[len(batch):]
         return previous
+
+    def _apply_generated_title(self, content: dict):
+        if not self.auto_title:
+            return
+        title = re.sub(r"^(?:会议)?(?:名称|标题)\s*[：:]\s*", "", str(content.get("title") or "").strip())
+        title = re.sub(r"[\r\n]+", " ", title).strip(" \t\"'“”‘’。.!！")
+        if not 4 <= len(title) <= 40 or title == "未命名会议":
+            return
+        self.title = title
+        self.auto_title = False
+        self.store.update_title(self.id, title)
