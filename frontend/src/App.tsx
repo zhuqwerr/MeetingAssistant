@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, AudioLines, Download, History, LoaderCircle, Mic, Settings as SettingsIcon, Square, X } from 'lucide-react';
-import { api, clock } from './api';
+import { api } from './api';
 import { HistoryView } from './HistoryView';
 import { Panels } from './Panels';
 import { SettingsDialog } from './SettingsDialog';
@@ -64,7 +64,6 @@ export default function App() {
   });
   const openHistory = () => action(async () => { setHistory(await api<MeetingListItem[]>('/meetings')); setView('history'); });
   const summarize = () => action(async () => { if (meeting) await api(`/meetings/${meeting.id}/summarize`, 'POST'); });
-  const level = Math.min(1, (state?.level ?? 0) * 12);
   return <div className="app-shell">
     <aside className="sidebar" aria-label="主导航">
       <button className="brand" aria-label="MeetingAssistant 首页" onClick={() => setView('meeting')}><AudioLines size={32} strokeWidth={2.7}/><span>MeetingAssistant</span></button>
@@ -76,10 +75,6 @@ export default function App() {
     </aside>
     <div className="app-content">
     <header className="topbar">
-      <div className="meeting-identity">
-        <label><span className="sr-only">会议名称</span><input className="header-title-input" maxLength={120} placeholder="未命名会议" value={active ? meeting?.title ?? title : title} onChange={e => setTitle(e.target.value)} disabled={active}/></label>
-        <div className="header-status" aria-live="polite"><span className={`status-dot ${status === 'recording' ? 'recording' : ''}`}/><span>{status ? statusLabels[status] ?? status : '准备就绪'}</span><time>{clock(state?.duration ?? meeting?.duration ?? 0)}</time><span className="local-processing">本地转写</span>{status === 'recording' && <span className="level-meter" aria-label="输入音量"><span style={{ width: `${level * 100}%` }}/></span>}{(state?.backlog ?? 0) > 3 && <span className="backlog">等待识别 {state?.backlog} 段</span>}</div>
-      </div>
       <form className="header-controls" onSubmit={e => { e.preventDefault(); if (!active) void start(); }}>
         <label className="header-source"><Mic size={17}/><span className="sr-only">音频来源</span><select value={active ? meeting?.source ?? source : source} onChange={e => setSource(e.target.value)} disabled={active}><option value="mic">麦克风</option><option value="system">系统声音</option><option value="mixed">混合声音</option></select></label>
         <label className="header-language"><span className="sr-only">转写语言</span><select value={active ? meeting?.language ?? language : language} onChange={e => setLanguage(e.target.value)} disabled={active}><option value="zh">中文</option><option value="en">English</option><option value="auto">自动识别</option></select></label>
@@ -92,7 +87,7 @@ export default function App() {
     </header>
     {view === 'meeting' ? <main className={meeting ? 'meeting-view' : 'setup-view'}>
       {(error || serviceError || state?.error || state?.summary_error || (!connected && meeting)) && <div className="notice" role="alert"><AlertCircle size={19}/><div>{serviceError || error || state?.error || state?.summary_error || '与本地服务的连接已断开，正在重新连接。录音状态以服务端为准。'}{state?.summary_error && !active && <button className="text-button" onClick={() => void openSettings()}>检查摘要设置</button>}</div>{error && <button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><X size={16}/></button>}</div>}
-      <Panels key={meeting?.id ?? 'empty'} meeting={meeting} state={state} interval={settings?.summary_interval ?? 30} onSummarize={() => void summarize()}/>
+      <Panels key={meeting?.id ?? 'empty'} meeting={meeting} state={state} title={active ? meeting?.title ?? title : title} titleDisabled={active} statusLabel={status ? statusLabels[status] ?? status : '准备就绪'} interval={settings?.summary_interval ?? 30} onTitleChange={setTitle} onSummarize={() => void summarize()}/>
     </main> : <main className="history-view"><HistoryView meetings={history} loading={busy} onRefresh={() => void openHistory()} onOpen={id => void action(async () => { await load(id); setView('meeting'); })}/></main>}
     {modal === 'settings' && settings && <SettingsDialog settings={settings} health={health} devices={devices} microphone={microphone} speaker={speaker} setDevices={(mic, speaker) => { setMicrophone(mic); setSpeaker(speaker); }} onSaved={setSettings} onClose={() => setModal(null)}/>}
     </div>

@@ -16,7 +16,7 @@ function isState(content: SummaryContent): content is MeetingState {
   return 'topics' in content && 'summary' in content;
 }
 
-export function Panels({ meeting, state, interval, onSummarize }: { meeting: Meeting | null; state: LiveState | null; interval: number; onSummarize: () => void }) {
+export function Panels({ meeting, state, title, titleDisabled, statusLabel, interval, onTitleChange, onSummarize }: { meeting: Meeting | null; state: LiveState | null; title: string; titleDisabled: boolean; statusLabel: string; interval: number; onTitleChange: (title: string) => void; onSummarize: () => void }) {
   const scroll = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const [showFollow, setShowFollow] = useState(false);
@@ -81,9 +81,12 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
     return <span className="source-row"><time>{clock(segment.start)}</time><button className="source-link" onClick={() => jump(segment.id)}>查看原文 ↗</button></span>;
   };
   const sources = (items: SummaryItem[] | undefined) => items?.length ? <ul>{items.map((item, index) => <li key={index}><span>{item.text}</span>{sourceLink(item.sources[0])}</li>)}</ul> : <p className="placeholder">尚未明确提及</p>;
+  const duration = state?.duration ?? meeting?.duration ?? 0;
+  const level = Math.min(1, (state?.level ?? 0) * 12);
+  const summaryStatus = state?.summary_busy ? '正在更新摘要' : meeting?.summary ? (fresh ? '摘要刚刚更新' : `摘要更新于 ${new Date(meeting.summary.created_at).toLocaleTimeString('zh-CN', { hour12: false })}`) : '等待第一段转写';
   return <div className="workspace">
     <section className="panel analysis-panel" aria-label="会议分析">
-      <div className="panel-header analysis-heading"><div><h2>{meeting?.title || '会议分析'}</h2><span>{state?.summary_busy ? '正在更新…' : meeting?.summary ? (fresh ? '刚刚更新' : `更新于 ${new Date(meeting.summary.created_at).toLocaleTimeString('zh-CN', { hour12: false })}`) : '等待第一段转写'}</span></div></div>
+      <div className="panel-header analysis-heading"><div className="analysis-identity"><label><span className="sr-only">会议名称</span><input className="analysis-title-input" maxLength={120} placeholder="未命名会议" value={title} onChange={event => onTitleChange(event.target.value)} disabled={titleDisabled}/></label><div className="analysis-meta" aria-live="polite"><span className={`status-dot ${state?.status === 'recording' ? 'recording' : ''}`}/><span>{statusLabel}</span><time>{clock(duration)}</time><span>本地转写</span>{state?.status === 'recording' && <span className="level-meter" aria-label="输入音量"><span style={{ width: `${level * 100}%` }}/></span>}{(state?.backlog ?? 0) > 3 && <span className="backlog">等待识别 {state?.backlog} 段</span>}<span className="analysis-summary-status">{summaryStatus}</span></div></div></div>
       <div className="analysis-tabs" role="tablist">{tabs.map(item => <button key={item.id} role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
       <div className="summary-body" role="tabpanel">
         {tab === 'summary' && (content && isState(content) ? <>
@@ -101,7 +104,7 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
     </section>
     <section className="panel transcript-panel" aria-label="实时转写">
       <div className="panel-header"><h2><FileText size={22}/>实时转写</h2><span>{segments.length} 条记录</span></div>
-      <div className="live-strip"><div className="live-meta"><time>{clock(state?.duration ?? meeting?.duration ?? 0)}</time><span className={recording ? 'live-pill on' : 'live-pill'}>{recording ? '录制中' : '转写'}</span></div><div className="live-wave" aria-hidden="true"><span style={{ width: `${Math.min(100, (state?.level ?? 0) * 1200)}%` }}/></div><p>{latest?.text ?? '开始后，最新一句会显示在这里。'}</p></div>
+      <div className="live-strip"><div className="live-meta"><time>{clock(duration)}</time><span className={recording ? 'live-pill on' : 'live-pill'}>{recording ? '录制中' : '转写'}</span></div><div className="live-wave" aria-hidden="true"><span style={{ width: `${Math.min(100, (state?.level ?? 0) * 1200)}%` }}/></div><p>{latest?.text ?? '开始后，最新一句会显示在这里。'}</p></div>
       <div className="transcript-body" ref={scroll} onScroll={() => { const el = scroll.current!; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 65; setShowFollow(!follow.current); }}>
         {segments.length ? <ol className="transcript-list">{segments.map(segment => <li key={segment.id} id={`segment-${segment.id}`} className={highlight === segment.id ? 'highlight' : ''}><div className="segment-meta"><time>{clock(segment.start)}</time><span>{segment.source === 'mic' ? '麦克风' : '系统声音'}</span></div><p>{segment.text}</p></li>)}</ol> : <div className="empty-transcript"><Mic size={48} strokeWidth={1.5}/><h3>{state?.status === 'recording' ? '正在聆听…' : state?.status === 'starting' ? '正在准备语音模型…' : '从第一句话开始'}</h3><p>{state?.status === 'recording' ? '请开始讲话，识别后的文字会自动出现在这里。' : state?.status === 'starting' ? '首次使用需要下载模型，准备完成后才会开始录音。' : '开始会议后，转写内容会按时间显示在这里。'}</p></div>}
       </div>
