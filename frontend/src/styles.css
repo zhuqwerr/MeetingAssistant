@@ -58,3 +58,63 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 .ask-drawer form{display:flex;gap:8px}
 .ask-drawer input{flex:1}
 .ask-drawer form .primary{width:42px;min-height:42px;padding:0}
+
+/* Layout refinement: keep the current visual language while using the window better. */
+@media(min-width:901px){
+  .topbar{height:68px;padding-inline:clamp(24px,2.5vw,44px)}
+  main{max-width:1800px;padding:20px clamp(24px,2.5vw,44px) 24px}
+  .setup-view .intro{padding:24px 0 20px}
+  .setup-view .intro h1{font-size:42px}
+  .setup-view .intro p{font-size:18px;margin-top:6px}
+  .controls{grid-template-columns:minmax(260px,1fr) 210px 170px 210px;gap:12px;margin-bottom:14px}
+  .controls input,.controls select,.controls button{height:48px;font-size:15px}
+  .controls .primary{font-size:16px}
+  .source-field svg{left:16px;top:14px}
+  .source-field select{padding-left:45px}
+  .status-strip{min-height:48px;padding:5px 16px;margin-bottom:14px}
+  .workspace{grid-template-columns:minmax(0,1.82fr) minmax(340px,1fr);gap:16px}
+  .panel{height:calc(100dvh - 232px);min-height:520px;padding-inline:20px}
+  .setup-view .panel{height:calc(100dvh - 382px);min-height:500px}
+  .panel-header{height:62px}
+  .analysis-panel .panel-header{min-height:62px;padding:10px 0 8px}
+  .analysis-tabs{gap:26px}
+  .analysis-tabs button{padding:10px 0}
+  .panel-footer{height:50px}
+  .meeting-view .transcript-panel .panel-footer{padding-right:126px}
+  .live-strip{margin-top:10px;padding:10px 12px}
+  .transcript-list{padding:10px 0}
+  .transcript-list li{padding:10px 10px;margin-bottom:1px}
+  .transcript-list p{font-size:15px;line-height:1.75;margin-top:4px}
+  .summary-section{padding:18px 0}
+  .state-card{margin-top:12px}
+  .meeting-caption{margin-top:9px}
+}
+
+@media(min-width:1500px){
+  .panel{height:calc(100dvh - 232px)}
+  .setup-view .panel{height:calc(100dvh - 382px)}
+}
+
+@media(max-width:900px){
+  .controls{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:17px}
+  .title-field{grid-column:1/-1}
+  .controls .primary{grid-column:1/-1}
+  .workspace{grid-template-columns:1fr;gap:14px}
+  .panel{height:520px;min-height:0}
+  .analysis-panel{height:520px;min-height:0}
+  .summary-body{max-height:none}
+}
+
+@media(max-width:600px){
+  main{padding-inline:14px}
+  .topbar{padding-inline:14px}
+  .panel{height:500px;padding-inline:15px}
+  .analysis-panel{height:500px}
+  .analysis-tabs{gap:16px;overflow-x:auto}
+  .analysis-tabs button{white-space:nowrap}
+  .ask-launcher{right:16px;bottom:16px}
+}
+
+@media(min-width:901px){
+  .meeting-view:has(.notice) .panel{height:calc(100dvh - 314px);min-height:440px}
+}
