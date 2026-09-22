@@ -25,14 +25,16 @@ class AudioJob:
 
 
 class Segmenter:
-    """End on a pause, but cap continuous speech at four seconds.
+    """End on a pause, but cap continuous speech at eight seconds.
 
     The low energy gate only bounds chunks; Whisper's Silero VAD performs speech
-    filtering before inference. No dependency on an end-of-utterance pause.
+    filtering before inference. The longer cap avoids cutting ordinary sentences
+    at the old four-second boundary while still bounding inference latency.
     """
-    def __init__(self, source: str, offset: float = 0, max_seconds: float = 4):
+    def __init__(self, source: str, offset: float = 0, max_seconds: float = 8):
         self.source, self.offset = source, offset
         self.max_samples = int(max_seconds * RATE)
+        self.soft_samples = min(int(4 * RATE), self.max_samples)
         self.position = 0
         self.frames: list[np.ndarray] = []
         self.size = 0
@@ -49,7 +51,9 @@ class Segmenter:
         voice = float(np.sqrt(np.mean(samples * samples))) > 0.002
         self.has_voice |= voice
         self.silent = 0 if voice else self.silent + len(samples)
-        if self.size >= self.max_samples or (self.silent >= int(0.6 * RATE) and self.size >= RATE):
+        short_pause_after_soft_limit = self.size >= self.soft_samples and self.silent >= int(0.2 * RATE)
+        ordinary_pause = self.silent >= int(0.6 * RATE) and self.size >= RATE
+        if self.size >= self.max_samples or short_pause_after_soft_limit or ordinary_pause:
             job = self.flush()
             return [job] if job is not None else []
         return []

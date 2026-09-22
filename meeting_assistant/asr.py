@@ -11,6 +11,41 @@ from .audio import AudioJob, RATE
 from .config import ROOT, Settings
 
 
+SENTENCE_END = re.compile(r"[。！？!?…][\"'”’）】》]*$")
+CJK = re.compile(r"[\u3400-\u9fff]")
+
+
+def _join_fragment(left: str, right: str) -> str:
+    """Join Whisper fragments without introducing spaces into Chinese text."""
+    if not left:
+        return right
+    if (CJK.match(left[-1]) or CJK.match(right[0])
+            or right[0] in "，。！？；：、,.!?;:）】》”’"):
+        return left + right
+    return left + " " + right
+
+
+def _coalesce_fragments(segments: list[dict]) -> list[dict]:
+    """Turn decoder timing fragments into readable utterances.
+
+    Faster Whisper may split one grammatical sentence into several adjacent
+    segments. Those boundaries are useful internally but should not become
+    separate transcript rows.
+    """
+    utterances: list[dict] = []
+    for segment in segments:
+        previous = utterances[-1] if utterances else None
+        if (previous is not None
+                and previous["source"] == segment["source"]
+                and segment["start"] - previous["end"] <= 0.5
+                and not SENTENCE_END.search(previous["text"])):
+            previous["end"] = segment["end"]
+            previous["text"] = _join_fragment(previous["text"], segment["text"])
+        else:
+            utterances.append(segment.copy())
+    return utterances
+
+
 class Transcriber:
     def __init__(self):
         self.model = None
@@ -109,4 +144,4 @@ class Transcriber:
                 if han_count >= 12 and han_count / duration > 12:
                     continue
                 result.append({"start": job.start + item.start, "end": job.start + end, "text": text, "source": job.source})
-            return result
+            return _coalesce_fragments(result)

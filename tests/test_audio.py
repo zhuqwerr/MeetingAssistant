@@ -11,10 +11,31 @@ def test_uninterrupted_speech_is_bounded_and_stop_flushes_tail():
     for _ in range(47):
         jobs.extend(segmenter.feed(frame))
     jobs.append(segmenter.flush())
-    assert len(jobs) == 3
-    assert [round(j.start, 1) for j in jobs] == [0, 4, 8]
+    assert len(jobs) == 2
+    assert [round(j.start, 1) for j in jobs] == [0, 8]
     assert sum(len(j.samples) for j in jobs) == 47 * len(frame)
-    assert all(len(j.samples) <= RATE * 4 for j in jobs)
+    assert all(len(j.samples) <= RATE * 8 for j in jobs)
+
+
+def test_continuous_sentence_is_not_hard_cut_at_four_seconds():
+    segmenter = Segmenter("system")
+    frame = np.ones(3200, dtype=np.float32) * 0.1
+    jobs = []
+    for _ in range(25):
+        jobs.extend(segmenter.feed(frame))
+    assert jobs == []
+
+
+def test_short_pause_after_four_seconds_finishes_the_utterance_early():
+    segmenter = Segmenter("system")
+    voice = np.ones(3200, dtype=np.float32) * 0.1
+    for _ in range(20):
+        assert segmenter.feed(voice) == []
+
+    jobs = segmenter.feed(np.zeros(3200, dtype=np.float32))
+
+    assert len(jobs) == 1
+    assert len(jobs[0].samples) == int(4.2 * RATE)
 
 
 def test_silence_does_not_enqueue_hallucination_prone_segments():

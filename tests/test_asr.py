@@ -26,6 +26,41 @@ def test_hallucination_candidates_do_not_reach_transcript():
     assert result[0]["start"] == 10
 
 
+def test_adjacent_decoder_fragments_are_returned_as_one_utterance():
+    candidates = [
+        SimpleNamespace(text="这位师长叫刘元璋", start=0, end=3,
+                        no_speech_prob=0.05, avg_logprob=-0.3, compression_ratio=0.8),
+        SimpleNamespace(text="是个", start=3, end=4,
+                        no_speech_prob=0.05, avg_logprob=-0.3, compression_ratio=0.8),
+    ]
+    engine = Transcriber()
+    engine.model = SimpleNamespace(transcribe=lambda *a, **k: (iter(candidates), None))
+
+    result = engine.transcribe(AudioJob(np.zeros(4 * RATE), 10, "system"), "zh", "")
+
+    assert result == [{
+        "start": 10,
+        "end": 14,
+        "text": "这位师长叫刘元璋是个",
+        "source": "system",
+    }]
+
+
+def test_complete_decoder_sentence_starts_a_new_utterance():
+    candidates = [
+        SimpleNamespace(text="第一句说完了。", start=0, end=2,
+                        no_speech_prob=0.05, avg_logprob=-0.3, compression_ratio=0.8),
+        SimpleNamespace(text="第二句开始。", start=2.1, end=4,
+                        no_speech_prob=0.05, avg_logprob=-0.3, compression_ratio=0.8),
+    ]
+    engine = Transcriber()
+    engine.model = SimpleNamespace(transcribe=lambda *a, **k: (iter(candidates), None))
+
+    result = engine.transcribe(AudioJob(np.zeros(4 * RATE), 0, "system"), "zh", "")
+
+    assert [item["text"] for item in result] == ["第一句说完了。", "第二句开始。"]
+
+
 class Closable:
     def __init__(self, order, name):
         self.order, self.name = order, name
