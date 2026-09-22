@@ -33,6 +33,10 @@ async def test_real_http_contract_and_invalid_source_removal(provider):
     assert payload["stream"] is False
     assert "new_segments" in payload["messages"][1]["content"]
     assert request.url.path == ("/api/chat" if provider == "ollama" else "/chat/completions")
+    if provider == "ollama":
+        assert payload["options"]["num_predict"] == 1400
+    else:
+        assert "max_tokens" not in payload
 
 
 @pytest.mark.parametrize("output", ["not JSON", "{}", '{"summary":"只有概括"}', '{"summary":"概括","topics":[],"key_points":[],"todos":[]}'])
@@ -40,6 +44,25 @@ async def test_malformed_model_output_is_not_a_fake_summary(output):
     client = Summarizer(httpx.MockTransport(lambda _: httpx.Response(200, json={"message": {"content": output}})))
     with pytest.raises(ValueError, match="结构化摘要"):
         await client.generate(Settings(), "", None, [{"id": 1, "text": "你好"}], {1})
+
+
+async def test_excess_model_items_are_bounded_instead_of_rejecting_the_summary():
+    content = {
+        "title": "上线安排",
+        "summary": "讨论上线",
+        "topics": [],
+        "key_points": [],
+        "todos": [],
+        "suggestions": [
+            {"kind": "missing_info", "title": f"待确认 {index}", "quote": "", "detail": "", "sources": [1]}
+            for index in range(9)
+        ],
+    }
+    client = Summarizer(httpx.MockTransport(lambda _: httpx.Response(200, json={"message": {"content": json.dumps(content, ensure_ascii=False)}})))
+
+    result = await client.generate(Settings(), "", None, [{"id": 1, "text": "讨论上线"}], {1})
+
+    assert len(result["suggestions"]) == 4
 
 
 async def test_provider_errors_do_not_leak_keys_or_response_body():
