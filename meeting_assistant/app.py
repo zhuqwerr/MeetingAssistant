@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .asr import Transcriber
@@ -16,6 +17,49 @@ from .config import ConfigStore, DATA, ROOT, SettingsUpdate
 from .session import Session, StartRequest
 from .storage import Storage
 from .summary import Summarizer
+
+
+def render_markdown(meeting: dict) -> str:
+    lines = [f"# {meeting['title']}", "", f"创建时间：{meeting['created_at']}", ""]
+    content = meeting["summary"]["content"] if meeting.get("summary") else None
+    if isinstance(content, dict) and "summary" in content and "topics" in content:
+        lines += ["## 即时摘要", "", content.get("summary") or "（尚无概括）", "", "### 讨论要点", ""]
+        topics = content.get("topics") or []
+        if topics:
+            for index, topic in enumerate(topics, 1):
+                lines += [f"{index}. {topic['title']}"]
+                lines += [f"   - {point['text']}" for point in topic.get("points") or []]
+                lines.append("")
+        else:
+            lines += ["（尚无讨论要点）", ""]
+        lines += ["## 关键要点", ""]
+        points = [f"- {item['text']}" for item in content.get("key_points") or []]
+        lines += points or ["（尚无）"]
+        lines += ["", "## 待办事项", ""]
+        todos = content.get("todos") or []
+        lines += [f"- {item['content']}（负责人：{item.get('owner') or '未明确'}，截止：{item.get('deadline') or '未明确'}）" for item in todos] or ["（尚无）"]
+        lines += ["", "## AI 建议", ""]
+        suggestions = content.get("suggestions") or []
+        if suggestions:
+            for item in suggestions:
+                lines += [f"- {item['title']}", f"  原话：{item.get('quote') or '（无）'}", f"  判断：{item.get('detail') or '（无）'}"]
+        else:
+            lines.append("（尚无）")
+        lines.append("")
+    elif isinstance(content, dict) and "overview" in content:
+        lines += ["## 会议摘要", "", content["overview"], ""]
+        for key, label in (("key_points", "讨论要点"), ("decisions", "已确认决策"), ("action_items", "待办事项")):
+            lines += [f"### {label}", ""] + [f"- {item['text']}" for item in content.get(key) or []] + [""]
+    lines += ["## 完整转写", ""]
+    for segment in sorted(meeting["segments"], key=lambda item: (item["start"], item["id"])):
+        seconds = int(segment["start"])
+        source = "麦克风" if segment["source"] == "mic" else "系统声音"
+        lines += [f"**{seconds // 60:02}:{seconds % 60:02} · {source}** {segment['text']}", ""]
+    return "\n".join(lines)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
 
 
 def create_app(folder=DATA, transcriber=None, summarizer=None):
@@ -160,6 +204,17 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
         spawn(session.summarize())
         return {"ok": True}
 
+    @app.post("/api/meetings/{mid}/ask")
+    async def ask(mid: str, body: AskRequest):
+        meeting = require(mid)
+        if not meeting["segments"]:
+            raise HTTPException(400, "还没有可询问的转写内容")
+        state = meeting["summary"]["content"] if meeting["summary"] else None
+        try:
+            return await summary.answer(config.settings, config.key, state, meeting["segments"], body.question)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+
     @app.get("/api/meetings/{mid}/events")
     async def events(mid: str, request: Request, after: int = 0):
         meeting = require(mid)
@@ -183,17 +238,7 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
     @app.get("/api/meetings/{mid}/export")
     async def export(mid: str):
         meeting = require(mid)
-        lines = [f"# {meeting['title']}", "", f"创建时间：{meeting['created_at']}", ""]
-        if meeting["summary"]:
-            content = meeting["summary"]["content"]
-            lines += ["## 会议摘要", "", content["overview"], ""]
-            for key, label in (("key_points", "讨论要点"), ("decisions", "已确认决策"), ("action_items", "待办事项")):
-                lines += [f"### {label}", ""] + [f"- {item['text']}" for item in content[key]] + [""]
-        lines += ["## 完整转写", ""]
-        for segment in sorted(meeting["segments"], key=lambda s: (s["start"], s["id"])):
-            seconds = int(segment["start"])
-            lines += [f"**{seconds // 60:02}:{seconds % 60:02} · {'麦克风' if segment['source'] == 'mic' else '系统声音'}** {segment['text']}", ""]
-        return Response("\n".join(lines), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="meeting-{mid[:8]}.md"'})
+        return Response(render_markdown(meeting), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="meeting-{mid[:8]}.md"'})
 
     dist = ROOT / "frontend" / "dist"
     if dist.exists():

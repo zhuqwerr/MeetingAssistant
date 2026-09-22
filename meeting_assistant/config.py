@@ -5,6 +5,8 @@ import ctypes
 import json
 import os
 import sys
+import subprocess
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -29,9 +31,34 @@ def cuda_runtime_installed() -> bool:
     return False
 
 
+@lru_cache(maxsize=1)
+def cuda_device_usable() -> bool:
+    """Probe the driver in a bounded child process, never in the web server."""
+    probe = """
+import ctypes
+import ctranslate2
+assert ctranslate2.get_cuda_device_count() > 0
+assert 'float16' in ctranslate2.get_supported_compute_types('cuda')
+driver = ctypes.WinDLL('nvcuda.dll')
+assert driver.cuInit(0) == 0
+size = ctypes.c_size_t()
+assert driver.cuDeviceTotalMem_v2(ctypes.byref(size), 0) == 0
+assert size.value >= 4 * 1024**3
+print('ready')
+"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True, timeout=20,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "ready"
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def preferred_asr() -> tuple[str, str]:
     # large-v3-turbo on CPU is slower than realtime, so it is only the default with CUDA.
-    if cuda_runtime_installed():
+    if cuda_runtime_installed() and cuda_device_usable():
         return "large-v3-turbo", "cuda"
     return "small", "cpu"
 
@@ -82,14 +109,16 @@ class ConfigStore:
     def __init__(self, folder: Path = DATA):
         folder.mkdir(parents=True, exist_ok=True)
         self.path = folder / "settings.json"
-        model, device = preferred_asr()
-        self.settings = Settings(asr_model=model, asr_device=device)
+        self.settings = Settings()
         self.key = os.environ.get("MEETING_ASSISTANT_API_KEY", "")
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding="utf-8"))
             self.settings = Settings.model_validate(saved["settings"])
             if saved.get("protected_key") and sys.platform == "win32":
                 self.key = protect(base64.b64decode(saved["protected_key"]), decrypt=True).decode()
+        else:
+            model, device = preferred_asr()
+            self.settings = Settings(asr_model=model, asr_device=device)
 
     def public(self):
         return {**self.settings.model_dump(), "has_api_key": bool(self.key)}

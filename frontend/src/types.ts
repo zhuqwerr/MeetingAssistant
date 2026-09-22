@@ -5,7 +5,12 @@ export interface Settings {
 }
 export interface Segment { id: number; start: number; end: number; text: string; source: string }
 export interface SummaryItem { text: string; sources: number[] }
-export interface SummaryContent { overview: string; key_points: SummaryItem[]; decisions: SummaryItem[]; action_items: SummaryItem[] }
+export interface Topic { title: string; points: SummaryItem[] }
+export interface TodoItem { content: string; owner: string; deadline: string; sources: number[] }
+export interface Suggestion { kind: 'plan_change' | 'missing_info' | 'fact_check'; title: string; quote: string; detail: string; sources: number[] }
+export interface MeetingState { summary: string; topics: Topic[]; key_points: SummaryItem[]; todos: TodoItem[]; suggestions: Suggestion[] }
+export interface LegacySummary { overview: string; key_points: SummaryItem[]; decisions: SummaryItem[]; action_items: SummaryItem[] }
+export type SummaryContent = MeetingState | LegacySummary
 export interface Summary { id: number; through_id: number; created_at: string; content: SummaryContent }
 export interface Meeting { id: string; title: string; created_at: string; status: string; source: string; language: string; duration: number; segments: Segment[]; summary: Summary | null }
 export interface LiveState { id: string; status: string; duration: number; level: number; backlog: number; error: string; summary_error: string; summary_busy: boolean }

@@ -1,8 +1,11 @@
-export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+export async function api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
-    response = await fetch('/api' + path, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  } catch { throw new Error('无法连接本地服务，请运行 start.ps1 后重试。'); }
+    response = await fetch('/api' + path, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined, signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new Error('无法连接本地服务，请运行 start.ps1 后重试。');
+  }
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
     const detail = result.detail;

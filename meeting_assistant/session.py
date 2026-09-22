@@ -10,7 +10,7 @@ from .asr import Transcriber
 from .audio import Capture
 from .config import ConfigStore
 from .storage import Storage
-from .summary import Summarizer
+from .summary import RECONCILE_SECONDS, TRIGGER_DELAY, mentions_key_event, reconcile_windows, Summarizer
 
 
 class StartRequest(BaseModel):
@@ -38,6 +38,7 @@ class Session:
         self.jobs: asyncio.Queue = asyncio.Queue(maxsize=60)
         self.stop_requested = asyncio.Event()
         self.summary_lock = asyncio.Lock()
+        self._early_task: asyncio.Task | None = None
         self.capture: Capture | None = None
         self.done = asyncio.Event()
         self.run_task: asyncio.Task | None = None
@@ -116,7 +117,7 @@ class Session:
             self.stop_requested.set()
             if self.capture:
                 self.capture.stop()
-            for task in (worker, ticker):
+            for task in (worker, ticker, self._early_task):
                 if task and not task.done():
                     task.cancel()
             self.level = 0
@@ -135,40 +136,77 @@ class Session:
                     return
                 results = await asyncio.to_thread(self.asr.transcribe, job, self.request.language, self.settings.vocabulary)
                 for result in results:
-                    self.store.add_segment(self.id, **result)
+                    saved = self.store.add_segment(self.id, **result)
+                    if mentions_key_event(saved["text"]):
+                        self.arm_early_summary()
             except Exception as exc:
                 self.fail(f"转写失败：{type(exc).__name__}。音频已保留，请检查模型和运行环境。")
             finally:
                 self.jobs.task_done()
 
-    async def summary_loop(self):
-        while not self.stop_requested.is_set():
-            try:
-                await asyncio.wait_for(self.stop_requested.wait(), timeout=self.settings.summary_interval)
-            except asyncio.TimeoutError:
-                await self.summarize()
+    def arm_early_summary(self):
+        if self._early_task and not self._early_task.done():
+            return
+        self._early_task = asyncio.create_task(self._early_summary())
 
-    async def summarize(self):
+    async def _early_summary(self):
+        try:
+            await asyncio.wait_for(self.stop_requested.wait(), TRIGGER_DELAY)
+        except asyncio.TimeoutError:
+            await self.summarize()
+
+    async def summary_loop(self):
+        next_reconcile = time.monotonic() + RECONCILE_SECONDS
+        while not self.stop_requested.is_set():
+            timeout = min(self.settings.summary_interval, max(0.05, next_reconcile - time.monotonic()))
+            try:
+                await asyncio.wait_for(self.stop_requested.wait(), timeout)
+            except asyncio.TimeoutError:
+                if time.monotonic() >= next_reconcile - 0.01:
+                    await self.summarize(mode="reconcile")
+                    next_reconcile = time.monotonic() + RECONCILE_SECONDS
+                else:
+                    await self.summarize()
+
+    async def summarize(self, mode: str = "incremental"):
         async with self.summary_lock:
             previous = self.store.summary(self.id)
-            remaining = self.store.segments(self.id, previous["through_id"] if previous else 0)
-            if not remaining:
+            # Freeze the input frontier. Audio arriving during an LLM request must
+            # remain pending until a later call, never be skipped by its cursor.
+            everything = self.store.segments(self.id)
+            through = previous["through_id"] if previous else 0
+            remaining = [segment for segment in everything if segment["id"] > through]
+            if not everything or (mode == "incremental" and not remaining):
                 return
             self.summary_busy, self.summary_error = True, ""
             try:
-                # Bounded requests. Advance cursor only after each successful durable write.
-                valid_ids = {s["id"] for s in self.store.segments(self.id)}
-                while remaining:
-                    batch, chars = [], 0
-                    for segment in remaining:
-                        if batch and chars + len(segment["text"]) > 6500:
-                            break
-                        batch.append(segment)
-                        chars += len(segment["text"])
-                    content = await self.summarizer.generate(self.settings, self.key, previous["content"] if previous else None, batch, valid_ids)
-                    previous = self.store.add_summary(self.id, batch[-1]["id"], content)
-                    remaining = remaining[len(batch):]
+                valid_ids = {segment["id"] for segment in everything}
+                # Recover the full backlog before windowed reconciliation. Each
+                # successful batch is durable, so a failure retries from that point.
+                previous = await self._update_incrementally(previous, remaining, valid_ids)
+                if mode == "reconcile":
+                    recent, cited = reconcile_windows(everything, previous["content"] if previous else None)
+                    content = await self.summarizer.generate(
+                        self.settings, self.key, previous["content"] if previous else None,
+                        recent, valid_ids, mode="reconcile", cited_segments=cited,
+                    )
+                    self.store.add_summary(self.id, everything[-1]["id"], content)
             except Exception as exc:
                 self.summary_error = str(exc)
             finally:
                 self.summary_busy = False
+
+    async def _update_incrementally(self, previous, remaining, valid_ids):
+        while remaining:
+            batch, chars = [], 0
+            for segment in remaining:
+                if batch and chars + len(segment["text"]) > 6500:
+                    break
+                batch.append(segment)
+                chars += len(segment["text"])
+            content = await self.summarizer.generate(
+                self.settings, self.key, previous["content"] if previous else None, batch, valid_ids,
+            )
+            previous = self.store.add_summary(self.id, batch[-1]["id"], content)
+            remaining = remaining[len(batch):]
+        return previous

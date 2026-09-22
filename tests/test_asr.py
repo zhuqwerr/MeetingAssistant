@@ -60,10 +60,31 @@ def test_windows_cuda_loads_outside_the_server_process(monkeypatch):
 
 
 def test_preferred_model_follows_cuda_runtime(monkeypatch):
+    monkeypatch.setattr("meeting_assistant.config.cuda_device_usable", lambda: True)
     monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: True)
     assert preferred_asr() == ("large-v3-turbo", "cuda")
     monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: False)
     assert preferred_asr() == ("small", "cpu")
+
+
+def test_installed_cuda_without_usable_device_falls_back(monkeypatch):
+    monkeypatch.setattr("meeting_assistant.config.cuda_runtime_installed", lambda: True)
+    monkeypatch.setattr("meeting_assistant.config.cuda_device_usable", lambda: False)
+    assert preferred_asr() == ("small", "cpu")
+
+
+def test_cuda_probe_failure_or_timeout_is_safe(monkeypatch):
+    import subprocess
+    from meeting_assistant.config import cuda_device_usable
+    cuda_device_usable.cache_clear()
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
+    assert not cuda_device_usable()
+    cuda_device_usable.cache_clear()
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired("probe", 20)
+    monkeypatch.setattr(subprocess, "run", timeout)
+    assert not cuda_device_usable()
+    cuda_device_usable.cache_clear()
 
 
 async def test_failed_switch_does_not_keep_the_released_model(monkeypatch):
