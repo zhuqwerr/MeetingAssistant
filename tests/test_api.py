@@ -31,11 +31,13 @@ def test_history_and_export_survive_new_app_instance(tmp_path):
     app = create_app(tmp_path)
     store = app.state.store
     mid = store.create("第一场会议", "mic", "zh")
-    store.add_segment(mid, 62, 66, "决定周五上线", "mic")
+    segment = store.add_segment(mid, 62, 66, "决定周五上线", "mic")
+    store.add_summary(mid, segment["id"], {"overview": "团队决定周五上线", "key_points": [], "decisions": [], "action_items": []})
     store.update(mid, "ended", 66)
     with TestClient(create_app(tmp_path)) as client:
         meetings = client.get("/api/meetings").json()
         assert meetings[0]["title"] == "第一场会议"
+        assert meetings[0]["summary"]["content"]["overview"] == "团队决定周五上线"
         assert client.get(f"/api/meetings/{mid}").json()["segments"][0]["text"] == "决定周五上线"
         exported = client.get(f"/api/meetings/{mid}/export")
         assert "01:02" in exported.text and "决定周五上线" in exported.text

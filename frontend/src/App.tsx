@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, AudioLines, Download, History, LoaderCircle, Mic, Settings as SettingsIcon, Square, X } from 'lucide-react';
 import { api, clock } from './api';
-import { Modal } from './Modal';
+import { HistoryView } from './HistoryView';
 import { Panels } from './Panels';
 import { SettingsDialog } from './SettingsDialog';
 import { useMeeting } from './useMeeting';
-import type { Devices, Health, Meeting, Settings } from './types';
+import type { Devices, Health, MeetingListItem, Settings } from './types';
 
 const statusLabels: Record<string, string> = { starting: '正在准备模型', recording: '正在录音', stopping: '正在处理最后的内容', ended: '会议已结束', error: '会议已停止', interrupted: '已恢复中断的会议' };
 
@@ -18,8 +18,9 @@ export default function App() {
   const [language, setLanguage] = useState('zh');
   const [microphone, setMicrophone] = useState('');
   const [speaker, setSpeaker] = useState('');
-  const [modal, setModal] = useState<'settings' | 'history' | null>(null);
-  const [history, setHistory] = useState<Meeting[]>([]);
+  const [modal, setModal] = useState<'settings' | null>(null);
+  const [view, setView] = useState<'meeting' | 'history'>('meeting');
+  const [history, setHistory] = useState<MeetingListItem[]>([]);
   const [error, setError] = useState('');
   const [serviceError, setServiceError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,6 +54,7 @@ export default function App() {
   const start = () => action(async () => {
     const result = await api<{ id: string }>('/meetings', 'POST', { title: title.trim() || '未命名会议', source, language, microphone: microphone || null, speaker: speaker || null });
     await load(result.id);
+    setView('meeting');
   });
   const stop = () => action(async () => { if (meeting) await api(`/meetings/${meeting.id}/stop`, 'POST'); });
   const openSettings = () => action(async () => {
@@ -60,12 +62,20 @@ export default function App() {
     // A device enumeration failure must not prevent configuring the LLM.
     const found = await api<Devices>('/devices').catch(() => null); setDevices(found); setModal('settings');
   });
-  const openHistory = () => action(async () => { setHistory(await api<Meeting[]>('/meetings')); setModal('history'); });
+  const openHistory = () => action(async () => { setHistory(await api<MeetingListItem[]>('/meetings')); setView('history'); });
   const summarize = () => action(async () => { if (meeting) await api(`/meetings/${meeting.id}/summarize`, 'POST'); });
   const level = Math.min(1, (state?.level ?? 0) * 12);
-  return <>
+  return <div className="app-shell">
+    <aside className="sidebar" aria-label="主导航">
+      <button className="brand" aria-label="MeetingAssistant 首页" onClick={() => setView('meeting')}><AudioLines size={32} strokeWidth={2.7}/><span>MeetingAssistant</span></button>
+      <nav className="sidebar-nav">
+        <button className={view === 'meeting' ? 'active' : ''} aria-current={view === 'meeting' ? 'page' : undefined} onClick={() => setView('meeting')}><Mic size={19}/><span>开始录音</span></button>
+        <button className={view === 'history' ? 'active' : ''} aria-current={view === 'history' ? 'page' : undefined} disabled={active || busy} onClick={() => void openHistory()}><History size={19}/><span>历史记录</span></button>
+      </nav>
+      <button className="sidebar-settings" disabled={active || busy} onClick={() => void openSettings()}><SettingsIcon size={18}/><span>设置</span></button>
+    </aside>
+    <div className="app-content">
     <header className="topbar">
-      <a className="brand" href="/" aria-label="MeetingAssistant 首页"><AudioLines size={32} strokeWidth={2.7}/><span>MeetingAssistant</span></a>
       <div className="meeting-identity">
         <label><span className="sr-only">会议名称</span><input className="header-title-input" maxLength={120} placeholder="未命名会议" value={active ? meeting?.title ?? title : title} onChange={e => setTitle(e.target.value)} disabled={active}/></label>
         <div className="header-status" aria-live="polite"><span className={`status-dot ${status === 'recording' ? 'recording' : ''}`}/><span>{status ? statusLabels[status] ?? status : '准备就绪'}</span><time>{clock(state?.duration ?? meeting?.duration ?? 0)}</time><span className="local-processing">本地转写</span>{status === 'recording' && <span className="level-meter" aria-label="输入音量"><span style={{ width: `${level * 100}%` }}/></span>}{(state?.backlog ?? 0) > 3 && <span className="backlog">等待识别 {state?.backlog} 段</span>}</div>
@@ -77,15 +87,14 @@ export default function App() {
       </form>
       <div className="header-actions">
         <a className={`toolbar-action ${!meeting?.segments.length ? 'disabled' : ''}`} aria-label="导出纪要" title="导出纪要" aria-disabled={!meeting?.segments.length} tabIndex={!meeting?.segments.length ? -1 : 0} href={meeting?.segments.length ? `/api/meetings/${meeting.id}/export` : undefined} download><Download size={18}/></a>
-        <button className="toolbar-action" aria-label="会议记录" title="会议记录" disabled={active || busy} onClick={() => void openHistory()}><History size={19}/></button>
         <button className="toolbar-action" aria-label="设置" title="设置" disabled={active || busy} onClick={() => void openSettings()}><SettingsIcon size={19}/></button>
       </div>
     </header>
-    <main className={meeting ? 'meeting-view' : 'setup-view'}>
+    {view === 'meeting' ? <main className={meeting ? 'meeting-view' : 'setup-view'}>
       {(error || serviceError || state?.error || state?.summary_error || (!connected && meeting)) && <div className="notice" role="alert"><AlertCircle size={19}/><div>{serviceError || error || state?.error || state?.summary_error || '与本地服务的连接已断开，正在重新连接。录音状态以服务端为准。'}{state?.summary_error && !active && <button className="text-button" onClick={() => void openSettings()}>检查摘要设置</button>}</div>{error && <button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><X size={16}/></button>}</div>}
       <Panels key={meeting?.id ?? 'empty'} meeting={meeting} state={state} interval={settings?.summary_interval ?? 30} onSummarize={() => void summarize()}/>
-    </main>
+    </main> : <main className="history-view"><HistoryView meetings={history} loading={busy} onRefresh={() => void openHistory()} onOpen={id => void action(async () => { await load(id); setView('meeting'); })}/></main>}
     {modal === 'settings' && settings && <SettingsDialog settings={settings} health={health} devices={devices} microphone={microphone} speaker={speaker} setDevices={(mic, speaker) => { setMicrophone(mic); setSpeaker(speaker); }} onSaved={setSettings} onClose={() => setModal(null)}/>}
-    {modal === 'history' && <Modal title="会议记录" onClose={() => setModal(null)}><div className="history-list">{history.length ? history.map(item => <button key={item.id} onClick={() => void action(async () => { await load(item.id); setModal(null); })}><div><strong>{item.title}</strong><span>{new Date(item.created_at).toLocaleString('zh-CN', { hour12: false })}</span></div><span>{clock(item.duration)}</span></button>) : <p className="history-empty">还没有会议记录，开始第一场会议吧。</p>}</div></Modal>}
-  </>;
+    </div>
+  </div>;
 }

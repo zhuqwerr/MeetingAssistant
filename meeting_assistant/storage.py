@@ -81,7 +81,30 @@ class Storage:
 
     def list(self):
         with self.lock:
-            return [dict(r) for r in self.db.execute("SELECT * FROM meetings ORDER BY created_at DESC LIMIT 100")]
+            rows = self.db.execute("""
+                SELECT m.*, s.id AS summary_id, s.through_id AS summary_through_id,
+                       s.created_at AS summary_created_at, s.content AS summary_content
+                FROM meetings m
+                LEFT JOIN summaries s ON s.id = (
+                    SELECT id FROM summaries WHERE meeting_id=m.id ORDER BY id DESC LIMIT 1
+                )
+                ORDER BY m.created_at DESC LIMIT 100
+            """).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            summary_id = item.pop("summary_id")
+            summary_through_id = item.pop("summary_through_id")
+            summary_created_at = item.pop("summary_created_at")
+            summary_content = item.pop("summary_content")
+            item["summary"] = None if summary_id is None else {
+                "id": summary_id,
+                "through_id": summary_through_id,
+                "created_at": summary_created_at,
+                "content": json.loads(summary_content),
+            }
+            result.append(item)
+        return result
 
     def get(self, mid: str):
         with self.lock:

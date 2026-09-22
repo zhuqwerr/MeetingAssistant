@@ -13,6 +13,7 @@ export interface LegacySummary { overview: string; key_points: SummaryItem[]; de
 export type SummaryContent = MeetingState | LegacySummary
 export interface Summary { id: number; through_id: number; created_at: string; content: SummaryContent }
 export interface Meeting { id: string; title: string; created_at: string; status: string; source: string; language: string; duration: number; segments: Segment[]; summary: Summary | null }
+export type MeetingListItem = Omit<Meeting, 'segments'>;
 export interface LiveState { id: string; title: string; status: string; duration: number; level: number; backlog: number; error: string; summary_error: string; summary_busy: boolean }
 export interface Health { ok: boolean; asr: { status: string; error: string; model: string | null }; active_meeting: string | null }
 export interface Devices { microphones: { id: string; name: string }[]; speakers: { id: string; name: string }[]; system_supported: boolean }
