@@ -26,6 +26,7 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
   const pendingAsk = useRef<AbortController | null>(null);
+  const askInput = useRef<HTMLInputElement>(null);
   const [chat, setChat] = useState<{ role: 'user' | 'ai'; text: string; sources: number[] }[]>([]);
   const segments = meeting?.segments ?? [];
   const content = meeting?.summary?.content;
@@ -43,6 +44,13 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
       pendingAsk.current = null;
     };
   }, [meeting?.id]);
+  useEffect(() => {
+    if (!askOpen) return;
+    const frame = requestAnimationFrame(() => askInput.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAskOpen(false); };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', closeOnEscape); };
+  }, [askOpen]);
   const jump = (id: number) => {
     const element = document.getElementById(`segment-${id}`);
     if (element) { follow.current = false; setShowFollow(true); setHighlight(id); element.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
@@ -100,8 +108,14 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
       {showFollow && <button className="follow-button" onClick={() => { follow.current = true; setShowFollow(false); setHighlight(null); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' }); }}><ArrowDown size={14}/>回到最新</button>}
       <div className="panel-footer"><Laptop size={16}/><span>语音在本机处理</span>{state?.status === 'recording' && <span className="live-label">正在记录</span>}</div>
     </section>
-    {meeting && <button className="ask-launcher" onClick={() => setAskOpen(true)}><Sparkles size={16}/>问问 AI</button>}
-    {askOpen && meeting && <aside className="ask-drawer" aria-label="会议 AI"><header><h2><Sparkles size={18}/>会议 AI</h2><button className="icon-button" aria-label="关闭问答" onClick={() => setAskOpen(false)}><X size={16}/></button></header><div className="ask-log">{chat.length ? chat.map((item, index) => <div key={index} className={item.role === 'user' ? 'ask-user' : 'ask-ai'}><p>{item.text}</p>{item.sources[0] != null && <button className="source-link" onClick={() => jump(item.sources[0])}>来源 {clock(segments.find(segment => segment.id === item.sources[0])?.start ?? 0)} · 查看原文 ↗</button>}</div>) : <div className="ask-prompts">{prompts.map(prompt => <button key={prompt} onClick={() => void ask(prompt)}>{prompt}</button>)}</div>}{asking && <p className="placeholder">正在查看这场会议…</p>}</div><form onSubmit={event => { event.preventDefault(); void ask(question); }}><input value={question} onChange={event => setQuestion(event.target.value)} placeholder="问问这场会议…" maxLength={500}/><button className="primary" type="submit" disabled={asking || !question.trim()} aria-label="发送"><Send size={16}/></button></form></aside>}
+    {meeting && <button className="ask-launcher" disabled={!segments.length} title={segments.length ? undefined : '有转写内容后即可提问'} onClick={() => setAskOpen(true)}><Sparkles size={16}/>问问 AI</button>}
+    {askOpen && meeting && <div className="ask-overlay" onMouseDown={() => setAskOpen(false)}>
+      <aside className="ask-drawer" role="dialog" aria-modal="true" aria-label="会议 AI" onMouseDown={event => event.stopPropagation()}>
+        <header><div className="ask-title"><span><Sparkles size={18}/></span><div><h2>会议 AI</h2><p>{meeting.title}</p></div></div><button className="icon-button" aria-label="关闭问答" onClick={() => setAskOpen(false)}><X size={17}/></button></header>
+        <div className="ask-log">{chat.length ? chat.map((item, index) => <div key={index} className={item.role === 'user' ? 'ask-user' : 'ask-ai'}><span className="ask-role">{item.role === 'user' ? '你' : '会议 AI'}</span><p>{item.text}</p>{item.sources[0] != null && <button className="source-link" onClick={() => { setAskOpen(false); jump(item.sources[0]); }}>来源 {clock(segments.find(segment => segment.id === item.sources[0])?.start ?? 0)} · 查看原文 ↗</button>}</div>) : <div className="ask-empty"><span className="ask-empty-icon"><Sparkles size={22}/></span><h3>问问这场会议</h3><p>根据转写和当前纪要回答，并标出可以核对的原话。</p><div className="ask-prompts"><span>常用问题</span>{prompts.map(prompt => <button key={prompt} onClick={() => void ask(prompt)}>{prompt}<span>→</span></button>)}</div></div>}{asking && <div className="ask-thinking"><LoaderCircle className="spin" size={15}/>正在查看这场会议…</div>}</div>
+        <form className="ask-form" onSubmit={event => { event.preventDefault(); void ask(question); }}><input ref={askInput} value={question} onChange={event => setQuestion(event.target.value)} placeholder="输入与会议相关的问题…" maxLength={500}/><button className="primary" type="submit" disabled={asking || !question.trim()} aria-label="发送"><Send size={17}/></button></form>
+      </aside>
+    </div>}
   </div>;
 }
 

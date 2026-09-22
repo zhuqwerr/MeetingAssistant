@@ -46,18 +46,22 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 .suggestion-kind{color:#1f6b4e;font-size:12px;font-weight:650}
 .suggestion strong{display:block;font-size:12px;color:#7b8593;font-weight:650}
 .ask-launcher{position:fixed;right:28px;bottom:24px;z-index:20;display:inline-flex;align-items:center;gap:8px;background:#1f6b4e;color:#fff;border-radius:999px;padding:12px 16px;box-shadow:0 10px 24px #17212e24}
-.ask-drawer{position:fixed;top:0;right:0;z-index:30;width:min(420px,100vw);height:100dvh;background:#fff;border-left:1px solid var(--border);box-shadow:-16px 0 40px #17212e14;display:flex;flex-direction:column;padding:0 18px 16px}
-.ask-drawer header{height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e9ee}
-.ask-drawer h2{display:flex;align-items:center;gap:8px;font-size:16px}
-.ask-log{flex:1;overflow:auto;padding:16px 0;display:flex;flex-direction:column;gap:12px}
-.ask-user,.ask-ai{border-radius:10px;padding:10px 12px;line-height:1.7;font-size:14px}
-.ask-user{align-self:flex-end;background:#e8f4ee;max-width:90%}
-.ask-ai{background:#f6f7f8}
-.ask-prompts{display:flex;flex-direction:column;gap:8px}
-.ask-prompts button{text-align:left;background:#f4f7f5;border-radius:8px;padding:10px 12px;color:#244438}
-.ask-drawer form{display:flex;gap:8px}
-.ask-drawer input{flex:1}
-.ask-drawer form .primary{width:42px;min-height:42px;padding:0}
+.ask-launcher:disabled{visibility:hidden}
+.ask-overlay{position:fixed;inset:0;z-index:29;background:#17212e2b;display:flex;justify-content:flex-end;animation:ask-fade .16s ease-out}
+.ask-drawer{width:min(440px,calc(100vw - 24px));height:100dvh;background:#fff;border-left:1px solid var(--border);box-shadow:-18px 0 50px #17212e24;display:flex;flex-direction:column;animation:ask-slide .2s ease-out}
+.ask-drawer header{height:76px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e9ee;padding:0 20px;flex-shrink:0}
+.ask-title{display:flex;align-items:center;gap:11px;min-width:0}.ask-title>span{width:34px;height:34px;border-radius:9px;background:#e9f4ef;color:#1f6b4e;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ask-title>div{min-width:0}.ask-title h2{font-size:16px}.ask-title p{margin-top:3px;color:#7b8593;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ask-log{flex:1;min-height:0;overflow:auto;padding:22px 20px;background:#f7f9f8;display:flex;flex-direction:column;gap:14px}
+.ask-user,.ask-ai{border-radius:12px;padding:11px 13px;line-height:1.7;font-size:14px;box-shadow:0 1px 2px #17212e0a}
+.ask-user{align-self:flex-end;background:#dff0e8;max-width:88%;border-bottom-right-radius:4px}
+.ask-ai{align-self:flex-start;background:#fff;border:1px solid #e3e8e5;max-width:94%;border-bottom-left-radius:4px}
+.ask-role{display:block;margin-bottom:4px;color:#66736d;font-size:11px;font-weight:650}.ask-user .ask-role{color:#39745c}
+.ask-empty{margin:auto 0;text-align:center;padding:24px 8px}.ask-empty-icon{width:48px;height:48px;margin:0 auto 14px;border-radius:14px;background:#e7f3ed;color:#1f6b4e;display:flex;align-items:center;justify-content:center}.ask-empty h3{font-size:18px}.ask-empty>p{max-width:310px;margin:8px auto 24px;color:#7b8593;font-size:13px;line-height:1.7}
+.ask-prompts{display:flex;flex-direction:column;gap:8px;text-align:left}.ask-prompts>span{color:#7b8593;font-size:11px;font-weight:650}.ask-prompts button{display:flex;align-items:center;justify-content:space-between;text-align:left;background:#fff;border:1px solid #e1e7e3;border-radius:9px;padding:11px 13px;color:#244438}.ask-prompts button:hover{border-color:#b9d2c5;background:#f4f8f6}.ask-prompts button span{color:#72a18a}
+.ask-thinking{display:flex;align-items:center;gap:8px;color:#6f7b75;font-size:12px;background:#fff;border-radius:9px;padding:9px 11px;align-self:flex-start}
+.ask-form{display:flex;gap:9px;padding:14px 20px 16px;border-top:1px solid #e5e9ee;background:#fff;flex-shrink:0}.ask-form input{flex:1;background:#f8faf9}.ask-form .primary{width:44px;min-height:44px;padding:0;border-radius:9px}
+@keyframes ask-fade{from{opacity:0}}@keyframes ask-slide{from{transform:translateX(24px)}}
 
 .topbar{position:relative}
 .topbar-context{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(42vw,620px);text-align:center;pointer-events:none;line-height:1.25}
