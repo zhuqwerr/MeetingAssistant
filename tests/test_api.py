@@ -60,9 +60,11 @@ def test_export_renders_new_state_and_keeps_legacy_minutes(tmp_path):
     store.add_summary(legacy, 1, {"overview": "讨论上线", "key_points": [{"text": "上线窗口", "sources": [1]}], "decisions": [], "action_items": []})
     with TestClient(app) as client:
         exported = client.get(f"/api/meetings/{fresh}/export").text
-        assert "即时摘要" in exported and "讨论顺丰联调" in exported and "决策结论" in exported and "负责人：张明" in exported and "判断：没有听到负责人" in exported
+        assert "即时摘要" in exported and "讨论顺丰联调" in exported and "决策结论" in exported and "关键要点" in exported and "负责人：张明" in exported and "判断：没有听到负责人" in exported
+        assert exported.index("决策结论") < exported.index("关键要点")
         old = client.get(f"/api/meetings/{legacy}/export").text
-        assert "会议摘要" in old and "讨论上线" in old and "讨论要点" in old
+        assert "会议摘要" in old and "讨论上线" in old and "决策结论" in old and "关键要点" in old
+        assert old.index("决策结论") < old.index("关键要点")
 
 
 def test_ask_answers_from_the_current_meeting(tmp_path):

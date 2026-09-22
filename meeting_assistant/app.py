@@ -23,7 +23,10 @@ def render_markdown(meeting: dict) -> str:
     lines = [f"# {meeting['title']}", "", f"创建时间：{meeting['created_at']}", ""]
     content = meeting["summary"]["content"] if meeting.get("summary") else None
     if isinstance(content, dict) and "summary" in content and "topics" in content:
-        lines += ["## 即时摘要", "", content.get("summary") or "（尚无概括）", "", "### 讨论要点", ""]
+        lines += ["## 即时摘要", "", content.get("summary") or "（尚无概括）", "", "### 决策结论", ""]
+        decisions = [f"- {item['text']}" for item in content.get("key_points") or []]
+        lines += decisions or ["（尚无明确结论）"]
+        lines += ["", "## 关键要点", ""]
         topics = content.get("topics") or []
         if topics:
             for index, topic in enumerate(topics, 1):
@@ -31,10 +34,7 @@ def render_markdown(meeting: dict) -> str:
                 lines += [f"   - {point['text']}" for point in topic.get("points") or []]
                 lines.append("")
         else:
-            lines += ["（尚无讨论要点）", ""]
-        lines += ["## 决策结论", ""]
-        points = [f"- {item['text']}" for item in content.get("key_points") or []]
-        lines += points or ["（尚无）"]
+            lines += ["（尚无关键要点）", ""]
         lines += ["", "## 待办事项", ""]
         todos = content.get("todos") or []
         lines += [f"- {item['content']}（负责人：{item.get('owner') or '未明确'}，截止：{item.get('deadline') or '未明确'}）" for item in todos] or ["（尚无）"]
@@ -48,7 +48,7 @@ def render_markdown(meeting: dict) -> str:
         lines.append("")
     elif isinstance(content, dict) and "overview" in content:
         lines += ["## 会议摘要", "", content["overview"], ""]
-        for key, label in (("key_points", "讨论要点"), ("decisions", "已确认决策"), ("action_items", "待办事项")):
+        for key, label in (("decisions", "决策结论"), ("key_points", "关键要点"), ("action_items", "待办事项")):
             lines += [f"### {label}", ""] + [f"- {item['text']}" for item in content.get(key) or []] + [""]
     lines += ["## 完整转写", ""]
     for segment in sorted(meeting["segments"], key=lambda item: (item["start"], item["id"])):
