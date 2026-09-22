@@ -5,7 +5,7 @@ import type { LiveState, Meeting, MeetingState, Suggestion, SummaryContent, Summ
 
 const tabs = [
   { id: 'summary', label: '即时摘要' },
-  { id: 'points', label: '关键要点' },
+  { id: 'points', label: '决策结论' },
   { id: 'todos', label: '待办事项' },
   { id: 'advice', label: 'AI 建议' },
 ] as const;
@@ -93,7 +93,7 @@ export function Panels({ meeting, state, interval, onSummarize }: { meeting: Mee
           <p className="overview">{content.overview}</p>
           <section className="summary-section"><h3>讨论要点</h3>{sources(content.key_points)}</section>
         </> : <p className="placeholder analysis-empty">开始会议后，这里会保持一份截至当前的完整纪要。</p>)}
-        {tab === 'points' && (content && isState(content) ? <section className="summary-section"><h3>关键要点</h3>{sources(content.key_points)}</section> : content && !isState(content) ? <section className="summary-section"><h3>已确认决策</h3>{sources(content.decisions)}</section> : <p className="placeholder analysis-empty">关键结论会单独列在这里，并可回到原话。</p>)}
+        {tab === 'points' && (content && isState(content) ? <section className="summary-section"><h3>决策结论</h3>{sources(content.key_points)}</section> : content && !isState(content) ? <section className="summary-section"><h3>决策结论</h3>{sources(content.decisions)}</section> : <p className="placeholder analysis-empty">明确决定、确认结果和关键数字会列在这里，并可回到原话。</p>)}
         {tab === 'todos' && (content && isState(content) ? <section className="summary-section"><h3>待办事项</h3>{content.todos.length ? <ul className="todo-list">{content.todos.map((item, index) => { const origin = sourceOf(item.sources[0]); return <Todo key={index} item={item} onJump={jump} when={origin ? clock(origin.start) : undefined}/>; })}</ul> : <p className="placeholder">尚未明确提及</p>}</section> : content && !isState(content) ? <section className="summary-section"><h3>待办事项</h3>{sources(content.action_items)}</section> : <p className="placeholder analysis-empty">听到明确任务后，会写在这里。</p>)}
         {tab === 'advice' && (content && isState(content) && content.suggestions.length ? content.suggestions.map((item, index) => <article className="suggestion" key={index}><p className="suggestion-kind">{kindLabel[item.kind]}</p><h3>{item.title}</h3>{item.quote && <p><strong>会议原话</strong>{item.quote}</p>}{item.detail && <p><strong>判断</strong>{item.detail}</p>}{sourceLink(item.sources[0])}</article>) : <p className="placeholder analysis-empty">计划变化、缺失信息和需要核对的说法会出现在这里。</p>)}
       </div>

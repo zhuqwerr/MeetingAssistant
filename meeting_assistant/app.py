@@ -32,7 +32,7 @@ def render_markdown(meeting: dict) -> str:
                 lines.append("")
         else:
             lines += ["（尚无讨论要点）", ""]
-        lines += ["## 关键要点", ""]
+        lines += ["## 决策结论", ""]
         points = [f"- {item['text']}" for item in content.get("key_points") or []]
         lines += points or ["（尚无）"]
         lines += ["", "## 待办事项", ""]
