@@ -163,10 +163,11 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 }
 
 /* App navigation and full-page meeting history. */
-.app-shell{min-height:100dvh;display:grid;grid-template-columns:218px minmax(0,1fr);background:#f7f8fa}
+.app-shell{min-height:100dvh;display:grid;grid-template-columns:260px minmax(0,1fr);background:#f7f8fa}
 .app-content{min-width:0;min-height:100dvh;display:flex;flex-direction:column}
+.app-content>main{max-width:none;width:100%;margin:0}
 .sidebar{height:100dvh;position:sticky;top:0;z-index:21;display:flex;flex-direction:column;padding:24px 14px 18px;border-right:1px solid var(--border);background:#fff}
-.sidebar .brand{width:100%;justify-content:flex-start;padding:0 10px 25px;background:transparent;color:#17212e;text-align:left}
+.sidebar .brand{width:100%;justify-content:flex-start;padding:0 10px 25px;background:transparent;color:#17212e;text-align:left;overflow:hidden}
 .sidebar-nav{display:flex;flex-direction:column;gap:6px}
 .sidebar-nav button,.sidebar-settings{width:100%;min-height:44px;display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:8px;background:transparent;color:#56616d;font-size:14px;text-align:left}
 .sidebar-nav button:hover:not(:disabled),.sidebar-settings:hover:not(:disabled){background:#f2f5f4;color:#1e352b}
@@ -185,7 +186,7 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
 .analysis-summary-status{padding-left:9px;border-left:1px solid #d4dbe0;color:#7b8593;overflow:hidden;text-overflow:ellipsis}
 
 .history-view{max-width:none;width:100%;overflow-y:auto;padding:0!important}
-.history-page{width:min(1480px,100%);margin:0 auto;padding:32px clamp(24px,3vw,48px) 48px}
+.history-page{width:100%;margin:0;padding:24px 16px 40px}
 .history-page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:20px;border-bottom:1px solid #e0e5e9}
 .history-page-header h1{font-size:27px;line-height:1.2;letter-spacing:-.6px}
 .history-page-header p{margin-top:7px;color:#7b8593;font-size:13px}
@@ -214,7 +215,8 @@ dialog{border:1px solid var(--border);padding:0;border-radius:14px;width:min(600
   #root{display:block}
   .app-shell,.app-content{height:100%;min-height:0}
   .app-content{overflow:hidden}
-  .app-content>main{flex:1;min-height:0}
+  .app-content>main{flex:1;min-height:0;padding:12px}
+  .app-content>main.history-view{padding:0}
 }
 
 @media(min-width:901px) and (max-width:1150px){
