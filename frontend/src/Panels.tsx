@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, FileText, Info, Laptop, LoaderCircle, Mic, RefreshCw, Send, Sparkles, X } from 'lucide-react';
+import { ArrowDown, FileText, LoaderCircle, Mic, RefreshCw, Send, Sparkles, X } from 'lucide-react';
 import { api, clock } from './api';
 import type { LiveState, Meeting, MeetingState, Suggestion, SummaryContent, SummaryItem, TodoItem } from './types';
 
@@ -16,7 +16,7 @@ function isState(content: SummaryContent): content is MeetingState {
   return 'topics' in content && 'summary' in content;
 }
 
-export function Panels({ meeting, state, title, titleDisabled, statusLabel, interval, onTitleChange, onSummarize }: { meeting: Meeting | null; state: LiveState | null; title: string; titleDisabled: boolean; statusLabel: string; interval: number; onTitleChange: (title: string) => void; onSummarize: () => void }) {
+export function Panels({ meeting, state, title, titleDisabled, statusLabel, onTitleChange, onSummarize }: { meeting: Meeting | null; state: LiveState | null; title: string; titleDisabled: boolean; statusLabel: string; onTitleChange: (title: string) => void; onSummarize: () => void }) {
   const scroll = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const [showFollow, setShowFollow] = useState(false);
@@ -86,7 +86,7 @@ export function Panels({ meeting, state, title, titleDisabled, statusLabel, inte
   const summaryStatus = state?.summary_busy ? '正在更新摘要' : meeting?.summary ? (fresh ? '摘要刚刚更新' : `摘要更新于 ${new Date(meeting.summary.created_at).toLocaleTimeString('zh-CN', { hour12: false })}`) : '等待第一段转写';
   return <div className="workspace">
     <section className="panel analysis-panel" aria-label="会议分析">
-      <div className="panel-header analysis-heading"><div className="analysis-identity"><label><span className="sr-only">会议名称</span><input className="analysis-title-input" maxLength={120} placeholder="未命名会议" value={title} onChange={event => onTitleChange(event.target.value)} disabled={titleDisabled}/></label><div className="analysis-meta" aria-live="polite"><span className={`status-dot ${state?.status === 'recording' ? 'recording' : ''}`}/><span>{statusLabel}</span><time>{clock(duration)}</time><span>本地转写</span>{state?.status === 'recording' && <span className="level-meter" aria-label="输入音量"><span style={{ width: `${level * 100}%` }}/></span>}{(state?.backlog ?? 0) > 3 && <span className="backlog">等待识别 {state?.backlog} 段</span>}<span className="analysis-summary-status">{summaryStatus}</span></div></div></div>
+      <div className="panel-header analysis-heading"><div className="analysis-identity"><label><span className="sr-only">会议名称</span><input className="analysis-title-input" maxLength={120} placeholder="未命名会议" value={title} onChange={event => onTitleChange(event.target.value)} disabled={titleDisabled}/></label><div className="analysis-meta" aria-live="polite"><span className={`status-dot ${state?.status === 'recording' ? 'recording' : ''}`}/><span>{statusLabel}</span><time>{clock(duration)}</time><span>本地转写</span>{state?.status === 'recording' && <span className="level-meter" aria-label="输入音量"><span style={{ width: `${level * 100}%` }}/></span>}{(state?.backlog ?? 0) > 3 && <span className="backlog">等待识别 {state?.backlog} 段</span>}<span className="analysis-summary-status">{summaryStatus}</span></div></div>{segments.length > 0 && <button className="text-button analysis-summarize" disabled={state?.summary_busy} onClick={onSummarize}>{state?.summary_busy ? <LoaderCircle className="spin" size={14}/> : <RefreshCw size={14}/>}立即总结</button>}</div>
       <div className="analysis-tabs" role="tablist">{tabs.map(item => <button key={item.id} role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
       <div className="summary-body" role="tabpanel">
         {tab === 'summary' && (content && isState(content) ? <>
@@ -100,7 +100,6 @@ export function Panels({ meeting, state, title, titleDisabled, statusLabel, inte
         {tab === 'todos' && (content && isState(content) ? <section className="summary-section"><h3>待办事项</h3>{content.todos.length ? <ul className="todo-list">{content.todos.map((item, index) => { const origin = sourceOf(item.sources[0]); return <Todo key={index} item={item} onJump={jump} when={origin ? clock(origin.start) : undefined}/>; })}</ul> : <p className="placeholder">尚未明确提及</p>}</section> : content && !isState(content) ? <section className="summary-section"><h3>待办事项</h3>{sources(content.action_items)}</section> : <p className="placeholder analysis-empty">听到明确任务后，会写在这里。</p>)}
         {tab === 'advice' && (content && isState(content) && content.suggestions.length ? content.suggestions.map((item, index) => <article className="suggestion" key={index}><p className="suggestion-kind">{kindLabel[item.kind]}</p><h3>{item.title}</h3>{item.quote && <p><strong>会议原话</strong>{item.quote}</p>}{item.detail && <p><strong>判断</strong>{item.detail}</p>}{sourceLink(item.sources[0])}</article>) : <p className="placeholder analysis-empty">计划变化、缺失信息和需要核对的说法会出现在这里。</p>)}
       </div>
-      <div className="panel-footer summary-footer"><Info size={16}/><span>每 {interval} 秒增量更新，左侧始终是当前完整纪要。</span>{segments.length > 0 && <button className="text-button" disabled={state?.summary_busy} onClick={onSummarize}>{state?.summary_busy ? <LoaderCircle className="spin" size={14}/> : <RefreshCw size={14}/>}立即总结</button>}</div>
     </section>
     <section className="panel transcript-panel" aria-label="实时转写">
       <div className="panel-header"><h2><FileText size={22}/>实时转写</h2><span>{segments.length} 条记录</span></div>
@@ -109,7 +108,6 @@ export function Panels({ meeting, state, title, titleDisabled, statusLabel, inte
         {segments.length ? <ol className="transcript-list">{segments.map(segment => <li key={segment.id} id={`segment-${segment.id}`} className={highlight === segment.id ? 'highlight' : ''}><div className="segment-meta"><time>{clock(segment.start)}</time><span>{segment.source === 'mic' ? '麦克风' : '系统声音'}</span></div><p>{segment.text}</p></li>)}</ol> : <div className="empty-transcript"><Mic size={48} strokeWidth={1.5}/><h3>{state?.status === 'recording' ? '正在聆听…' : state?.status === 'starting' ? '正在准备语音模型…' : '从第一句话开始'}</h3><p>{state?.status === 'recording' ? '请开始讲话，识别后的文字会自动出现在这里。' : state?.status === 'starting' ? '首次使用需要下载模型，准备完成后才会开始录音。' : '开始会议后，转写内容会按时间显示在这里。'}</p></div>}
       </div>
       {showFollow && <button className="follow-button" onClick={() => { follow.current = true; setShowFollow(false); setHighlight(null); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' }); }}><ArrowDown size={14}/>回到最新</button>}
-      <div className="panel-footer"><Laptop size={16}/><span>语音在本机处理</span>{state?.status === 'recording' && <span className="live-label">正在记录</span>}</div>
     </section>
     {meeting && <button className="ask-launcher" disabled={!segments.length} title={segments.length ? undefined : '有转写内容后即可提问'} onClick={() => setAskOpen(true)}><Sparkles size={16}/>问问 AI</button>}
     {askOpen && meeting && <div className="ask-overlay" onMouseDown={() => setAskOpen(false)}>

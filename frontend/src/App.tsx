@@ -87,7 +87,7 @@ export default function App() {
     </header>
     {view === 'meeting' ? <main className={meeting ? 'meeting-view' : 'setup-view'}>
       {(error || serviceError || state?.error || state?.summary_error || (!connected && meeting)) && <div className="notice" role="alert"><AlertCircle size={19}/><div>{serviceError || error || state?.error || state?.summary_error || '与本地服务的连接已断开，正在重新连接。录音状态以服务端为准。'}{state?.summary_error && !active && <button className="text-button" onClick={() => void openSettings()}>检查摘要设置</button>}</div>{error && <button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><X size={16}/></button>}</div>}
-      <Panels key={meeting?.id ?? 'empty'} meeting={meeting} state={state} title={active ? meeting?.title ?? title : title} titleDisabled={active} statusLabel={status ? statusLabels[status] ?? status : '准备就绪'} interval={settings?.summary_interval ?? 30} onTitleChange={setTitle} onSummarize={() => void summarize()}/>
+      <Panels key={meeting?.id ?? 'empty'} meeting={meeting} state={state} title={active ? meeting?.title ?? title : title} titleDisabled={active} statusLabel={status ? statusLabels[status] ?? status : '准备就绪'} onTitleChange={setTitle} onSummarize={() => void summarize()}/>
     </main> : <main className="history-view"><HistoryView meetings={history} loading={busy} onRefresh={() => void openHistory()} onOpen={id => void action(async () => { await load(id); setView('meeting'); })}/></main>}
     {modal === 'settings' && settings && <SettingsDialog settings={settings} health={health} devices={devices} microphone={microphone} speaker={speaker} setDevices={(mic, speaker) => { setMicrophone(mic); setSpeaker(speaker); }} onSaved={setSettings} onClose={() => setModal(null)}/>}
     </div>
