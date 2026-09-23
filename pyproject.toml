@@ -14,8 +14,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cuda = ["nvidia-cublas-cu12>=12,<13; sys_platform == 'win32'", "nvidia-cudnn-cu12>=9,<10; sys_platform == 'win32'"]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2"]
+desktop-build = ["pyinstaller>=6.14,<7"]
 
 [tool.setuptools.packages.find]
 include = ["meeting_assistant*"]

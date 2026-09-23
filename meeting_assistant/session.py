@@ -62,7 +62,7 @@ class Session:
         try:
             self.jobs.put_nowait(job)
         except asyncio.QueueFull:
-            self.fail("本机识别速度跟不上录音，已停止采集。原始音频已保存在 data/recordings，可换较小模型后重新处理。")
+            self.fail("本机识别速度跟不上录音，已停止采集。原始音频已保存在本地，可关闭高负载程序后重新处理。")
 
     def fail(self, message):
         if not self.error:
@@ -95,6 +95,8 @@ class Session:
             await prepare
             if self.stop_requested.is_set():
                 return
+            if hasattr(self.asr, "begin"):
+                self.asr.begin(self.settings.vocabulary)
             self.status, self.started = "recording", time.monotonic()
             self.store.update(self.id, self.status, 0)
             self.capture = Capture(
@@ -108,7 +110,7 @@ class Session:
             self.capture.start()
             await self.stop_requested.wait()
             await asyncio.to_thread(self.capture.join)
-            # All capture threads have delivered their last partial chunks.
+            # All capture threads have delivered their last complete chunks.
             await asyncio.sleep(0)
             await self.jobs.put(None)
             await worker
@@ -181,6 +183,9 @@ class Session:
             through = previous["through_id"] if previous else 0
             remaining = [segment for segment in everything if segment["id"] > through]
             if not everything or (mode == "incremental" and not remaining):
+                return
+            if not self.settings.summary_url or not self.settings.summary_model:
+                self.summary_error = "转写正常运行；配置兼容 Chat Completions API 后即可生成摘要。"
                 return
             self.summary_busy, self.summary_error = True, ""
             try:

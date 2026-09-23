@@ -11,3 +11,8 @@ frontend/dist/
 .npm-cache/
 frontend/*.tsbuildinfo
 *.log
+build-assets/
+release/
+build/
+.playwright-mcp/
+/reference-ui.png

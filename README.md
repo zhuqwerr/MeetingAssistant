@@ -2,84 +2,86 @@
 
 > 让讨论留下重点。
 
-MeetingAssistant 是一款面向 Windows 的本地会议助手。它可以同时采集麦克风与系统声音，使用 Whisper 在本机持续转写，并在会议进行过程中维护一份不断更新的完整纪要。用户可以随时查看讨论脉络、决策结论、待办事项和 AI 建议，也可以直接向当前会议提问，并跳回对应原话核对。
+MeetingAssistant 是 Windows 会议记录工具，可采集麦克风、系统声音或两者混合，在本机实时转写，并持续整理会议摘要、讨论要点、决策、待办与 AI 建议。用户也可以针对当前会议提问，并跳回对应转写核对依据。
 
-项目采用本地服务与浏览器工作台的形式运行，目前不是 Electron/Tauri 安装包。语音默认留在本机处理；摘要既可连接本地 Ollama，也可使用兼容 Chat Completions 的 API。项目参考了 Meetily 的本地录音理念与 MeetingBro 的增量摘要设计，但不依赖它们的运行环境。
+桌面版使用 Electron 承载现有 React 工作台，由本地服务处理音频、转写和会议数据。用户可选择 **Whisper Base、Small 或 Medium**，模型在应用内按需下载，并使用 CPU int8 转写；摘要、建议与问答只使用用户配置的 Chat Completions 兼容 API。没有 API 配置时，录音、转写、历史记录和导出仍可用。
 
 ## 项目亮点
 
 | 能力 | 说明 |
 | --- | --- |
-| 本地实时转写 | 基于 faster-whisper / CTranslate2，在本机完成语音识别；支持麦克风、Windows 系统声音以及混合采集。 |
-| 累计式实时总结 | AI 根据新增转写持续更新同一份会议状态，而不是生成彼此割裂的摘要片段；会议结束时会补齐尾音并完成最终总结。 |
-| 结构化会议纪要 | 自动整理即时摘要、讨论脉络、决策结论、待办事项和 AI 建议，未明确的负责人或时间不会被模型擅自补全。 |
-| AI 自动命名 | 未填写名称的会议会在内容足够后，根据实际讨论主题生成简短标题。 |
-| 每条结论可追溯 | 摘要、待办和建议可以引用转写片段，点击“查看原文”即可跳到对应时间与文字。 |
-| 面向会议的 AI 问答 | “问问 AI”结合当前纪要和相关转写回答问题；证据不足时明确说明，并给出可核对的来源。 |
-| 本地优先与隐私保护 | 原始音频、转写、纪要和历史记录保存在本机；API 密钥在 Windows 上使用 DPAPI 加密，前端无法读取。 |
-| 可靠的增量处理 | 转写与总结彼此独立；摘要服务失败时继续录音并保留上一版结果，恢复后可重试，不会用空结果覆盖已有纪要。 |
-| 专注的单屏工作区 | 桌面端将录音控制、会议分析和实时转写集中在一个视口内，长内容只在各自面板中滚动。 |
+| 单应用安装 | Windows 安装包包含 Electron、本地服务和前端；普通用户无需另装 Python、Node.js 或 Ollama。Whisper 模型在应用内按需下载。 |
+| 三档本地转写 | 可选 Whisper Base（约 148 MB）、Small（约 486 MB）或 Medium（约 1.53 GB），均使用 CPU int8，不要求 NVIDIA GPU。支持麦克风、Windows 系统声音和混合采集。 |
+| 累计式实时总结 | 根据新增转写持续更新同一份会议状态；API 失败时保留上一版摘要，录音与转写继续运行。 |
+| 可核对的会议纪要 | 摘要、要点、决策和待办可以引用转写片段，点击来源即可跳回原话。 |
+| 会议问答 | 根据当前纪要和相关转写回答问题；证据不足时明确说明。 |
+| 本地优先 | 原始音频、转写和历史记录保存在本机。只将会议文字发送到用户配置的 API；Windows 下密钥使用 DPAPI 加密保存。 |
+| 单屏工作区 | 录音控制、会议分析和实时转写集中在一个页面，长内容在各自面板中滚动。 |
 
-适合线上会议、线下访谈、需求讨论、项目复盘和课程记录等需要边听、边记、边梳理的场景。
+## Windows 桌面版
 
-## 启动
+普通用户安装发布的 `MeetingAssistant Setup.exe` 后即可启动。会议音频和历史记录默认保存在：
 
-本机已经安装依赖并完成构建后，在 PowerShell 中运行：
+```text
+%LOCALAPPDATA%\MeetingAssistant\data
+```
+
+首次使用前，在“设置”选择 Base、Small 或 Medium 并下载；模型各自下载一次，存放在 `%LOCALAPPDATA%\MeetingAssistant\models`，可以查看下载进度，失败后重试。较小模型下载快、占用资源少，Medium 通常更准确但 CPU 和内存要求更高。下载完成后语音在本机 CPU 上识别。摘要 API 是可选配置：在“设置”填写兼容 Chat Completions 的 API 地址、模型名和密钥；DeepSeek 的灰色示例为 `https://api.deepseek.com` 和 `deepseek-flash`，需要用户自行填写 API 密钥后使用。默认每 2 分钟更新一次，间隔可在设置中按整分钟调整（1–60 分钟）。未配置 API 时仍可以录音和转写。
+
+> 安装包不携带 Whisper 权重。首次下载所选模型需要网络连接；应用安装、会议数据和模型分开存放。
+
+### 从源码构建桌面安装包
+
+构建机需要 Windows x64、Python 3.12、Node.js 20+ 和 npm。PowerShell 中运行：
 
 ```powershell
-cd E:\workspace\MeetingAssistant
+.\install.ps1
+.\scripts\build-desktop.ps1
+```
+
+构建脚本用 PyInstaller 构建本地服务，并输出不含语音权重的 NSIS 安装包到 `release/`。最终安装包不依赖构建机上的 Python 或 Node.js。
+
+Electron 开发运行：
+
+```powershell
+cd frontend
+npm run desktop:dev
+```
+
+该命令会直接启动 Electron、Vite 热更新服务器和本地后端；修改前端 TSX/CSS 后会自动刷新，不需要重新构建。修改 Electron 主进程或 Python 后端后，需要重启应用。
+
+### 浏览器开发模式
+
+浏览器入口保留用于本地开发。需要 Python 3.12 和 Node.js 20+：
+
+```powershell
+.\install.ps1
 .\start.ps1
 ```
 
-打开 <http://127.0.0.1:8766>。服务只监听本机。结束会议后等待“会议已结束”再关闭服务；关闭浏览器不会结束后台录音，可重新打开页面恢复。Ctrl+C 退出服务。
+服务只监听 `127.0.0.1:8766`。浏览器关闭不会结束录音；重新打开页面可恢复当前会议。模型下载到本机用户数据目录；已有的固定版本 Medium 缓存仍会被识别并复用。
 
-在新电脑安装：Python 3.12（含 `py` 启动器）、Node.js 20+，然后运行 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。执行策略受限时启动也可使用 `powershell -ExecutionPolicy Bypass -File .\start.ps1`，不修改全局执行策略。
-
-## 第一次使用
-
-1. 打开“设置”，选择本地转写模型。默认 Small / CPU；安装 CUDA 可选依赖且驱动探测确认有支持 float16、至少 4GB 显存的 NVIDIA 设备后，新配置默认 Large v3 Turbo / CUDA。探测失败或超时使用 CPU。已保存的配置不会被改写；探测不保证运行时显存始终充足。Tiny 可用于快速验证。首次使用从 Hugging Face 下载模型，缓存到 `models/`。可先点击“保存并准备模型”。未准备好时不会开始采集。
-2. 配置摘要服务并点击“测试摘要连接”：
-   - **本地 Ollama**：先安装并启动 Ollama，再运行 `ollama pull qwen3:4b`。地址 `http://127.0.0.1:11434`，模型名与本地安装的一致；也可使用你已安装的其他模型。
-   - **兼容 API**：填写服务商的 chat completions 根地址（通常以 `/v1` 结尾）、模型名和 API 密钥。应用会追加 `/chat/completions`。只发送文字，不发送音频；是否留存文字由所选服务决定。
-3. 选择麦克风、系统声音或两者。线上会议选两者并佩戴耳机；线下会议选麦克风。设备可在“设置 → 音频设备”中指定，默认使用系统默认设备。
-4. 输入会议名称、选择中文或英文，点击“开始会议”。确认状态变为“正在录音”后讲话。
-5. 左侧四个 Tab 展示即时摘要、关键要点、待办事项、AI 建议；即时摘要同时列出已经形成的决策结论，关键要点按主题呈现讨论脉络，右侧显示转写。默认每 30 秒增量更新；听到关键事件时合并 8 秒内的触发，会议中每 15 分钟校正一次。校正前先补齐尚未总结的转写，失败时保留已成功保存的状态。可点“立即总结”，“查看原文”跳转到引用片段。
-6. 点击“结束会议”，等待尾音转写和最终增量摘要完成，再导出 Markdown。左侧“历史记录”可按日期查看本机保存的会议，点击任一记录可回到完整纪要和转写。
-7. “问问 AI”使用当前会议状态与最多 12 条相关转写回答问题。切换会议会清空对话并取消旧请求；对话不入库。旧版摘要仍可查看、跳转和导出，无需重新计算。
-
-**摘要必须连接真实模型。** Ollama 未运行、模型未安装或 API 不可用时，显示明确错误并保留上次摘要；录音和转写独立继续。不会用关键词拼接冒充 AI 总结。
-
-## 当前边界
-
-- “实时”是短段识别：静音处提前提交，连续讲话最多每 4 秒提交一次，再加模型推理、排队耗时。不是逐字流式 ASR，也不保证 1 秒出字。
-- 使用 faster-whisper / CTranslate2。CPU 为 int8，CUDA 为 float16。中文术语可在设置里提供提示。短片段边界、人名、噪声和多人重叠仍可能误识别。
-- 麦克风与系统声音分别识别并按音频时间排序，来源标签不等于发言人识别；没有回声消除或说话人分离。
-- 摘要是累计状态 + 新转写，支持条目来源跳转。15 分钟校正使用最近窗口和当前引用，不等于整场全文重审；仍需核对模型推断。模型遗漏必需状态字段时会拒绝更新，不会自动以空列表覆盖旧内容。没有摘要编辑功能。
-- 声音始终保存为本地 WAV。遇到识别队列过载会明确停止采集并提示，原始音频仍保留；第一版未提供音频文件重新导入界面。
-- Windows 系统声音使用 WASAPI loopback；跨平台系统声音尚未实现。CUDA 需要匹配的 CUDA 12 / cuDNN 9 运行库；CPU 路径不需要。
-
-## 文件与隐私
+## 隐私和数据
 
 | 位置 | 内容 |
 | --- | --- |
-| `data/meetings.sqlite3` | 会议、转写、摘要快照 |
-| `data/recordings/<会议ID>/mic.wav` | 麦克风原始音频（单声道 16kHz） |
-| `data/recordings/<会议ID>/system.wav` | 系统声音原始音频 |
-| `data/settings.json` | 模型配置及 Windows DPAPI 加密后的 API 密钥 |
-| `models/` | 下载的本地语音模型 |
+| `%LOCALAPPDATA%\MeetingAssistant\data\meetings.sqlite3` | 会议、转写和摘要快照 |
+| `%LOCALAPPDATA%\MeetingAssistant\data\recordings\<会议ID>` | 麦克风和系统声音 WAV |
+| `%LOCALAPPDATA%\MeetingAssistant\data\settings.json` | API 地址、模型名、术语和加密后的 API 密钥 |
+| `%LOCALAPPDATA%\MeetingAssistant\models\whisper-{base,small,medium}` | 按需下载的固定版本 Whisper 模型 |
+| `%LOCALAPPDATA%\MeetingAssistant\logs\backend.log` | 本地服务诊断日志 |
 
-密钥不返回前端或写入浏览器存储。Windows 密钥绑定当前账户；非 Windows 环境仅在进程内保留密钥，可用 `MEETING_ASSISTANT_API_KEY` 环境变量提供。会议内容和 WAV 未加密，按本机文件权限保存。首次下载模型需要网络；本地模型已缓存且使用本地 Ollama 时，会议处理无需云端服务。
+录音 WAV 和会议文字未加密，按当前 Windows 用户的文件权限保存在本机。摘要、建议和问答会把相关转写文字发送给所配置的 API；原始音频不会发送。卸载应用默认保留用户数据。
 
-## 开发与测试
+## 性能与已知边界
 
-```powershell
-# 后端（生产界面由同一服务提供）
-.venv/Scripts/python.exe -m uvicorn meeting_assistant.app:create_app --factory --host 127.0.0.1 --port 8766
-# 开发界面（另一个终端）
-cd frontend
-npm run dev
-# http://127.0.0.1:5179，/api 代理到本机 8766
-```
+- Whisper 的转写按停顿或最长约 8 秒的音频段更新，不是逐字流式模型。CPU 性能因设备和所选模型而异；Medium 在参考机器上的 P0 基准已覆盖单路 10 分钟音频，混合采集及内存、识别质量门槛仍需完成全部验收，详见 [P0 结果](docs/whisper-medium-p0-results.md)。
+- 麦克风和系统声音分别转写后按时间排序；来源标签不代表说话人身份。多人重叠、噪声、人名和专业术语仍可能识别错误。
+- 识别队列过载时应用会停止采集并保留 WAV，避免静默丢失音频。
+- 摘要 API 离线、超时或返回格式无效时，录音不会停止，已保存摘要不会被空结果覆盖。
+- Windows 系统声音采集使用 WASAPI loopback；其他平台目前不在第一版范围。
+
+## 开发验证
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
@@ -87,16 +89,20 @@ cd frontend
 npm run build
 ```
 
-真实语音模型验证：`.venv/Scripts/python.exe scripts/smoke_asr.py <音频路径> --model small --language zh`。单元/集成测试使用受控模型替身验证调度和协议，不代表真实识别或摘要质量。
+对本地音频样本运行 Whisper 冒烟识别（默认 Medium，可选 `base`、`small` 或 `medium`）：
 
-Windows NVIDIA GPU 可选安装：`.venv/Scripts/python.exe -m pip install -e ".[cuda]"`。安装后，尚未保存过配置时默认使用 Large v3 Turbo 和 CUDA。程序会加载虚拟环境内 NVIDIA 运行库，无需修改系统 PATH。Windows 上 CUDA 识别在独立进程中运行，避免原生库退出时影响会议服务；切换模型会先释放上一份模型。同一模型在 CPU 上慢于实时，不用于当前会议识别。更大模型仍可能误识别或产生幻觉，不能代替人工核对。
+```powershell
+cd ..
+.venv/Scripts/python.exe scripts/smoke_asr.py <音频路径> --language zh --model small
+```
 
-模块：`audio.py` 采集/分段，`asr.py` 本地识别，`session.py` 任务生命周期与增量总结，`summary.py` 模型接口，`storage.py` 本地持久化，`app.py` HTTP/SSE，`frontend/src/` React 界面。
+固定模型仓库为 `Systran/faster-whisper-{base,small,medium}`，应用按固定修订版本下载模型文件并校验文件大小。依赖锁定在 `requirements-lock.txt`；运行端只包含 CPU 识别所需依赖，不包含 FunASR、PyTorch 或 CUDA。
+
+模块：`meeting_assistant/audio.py` 负责采集与分段，`asr.py` 负责 Whisper 识别，`session.py` 管理会议任务与增量摘要，`summary.py` 实现 Chat Completions 请求，`storage.py` 持久化，`app.py` 提供本地 HTTP/SSE，`frontend/src/` 是 React 工作台，`frontend/desktop/` 管理 Electron 进程。
 
 ## 参考
 
 - [Meetily](https://github.com/Zackriya-Solutions/meetily)
 - [MeetingBro 增量摘要](https://github.com/armpro24-blip/MeetingBro/blob/main/app/backend/meetingbro/summarization/llm.py)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- [Ollama chat API](https://docs.ollama.com/api/chat)
 - [SoundCard](https://soundcard.readthedocs.io/en/latest/)

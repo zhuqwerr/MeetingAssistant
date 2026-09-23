@@ -4,9 +4,15 @@ import numpy as np
 import pytest
 
 from meeting_assistant.audio import AudioJob
-from meeting_assistant.config import ConfigStore
+from meeting_assistant.config import ConfigStore, Settings
 from meeting_assistant.session import Session, StartRequest
 from meeting_assistant.storage import Storage
+
+
+def configured(folder):
+    config = ConfigStore(folder)
+    config.settings = Settings(summary_url="https://api.example.com/v1", summary_model="test-model")
+    return config
 
 
 class FakeASR:
@@ -15,6 +21,23 @@ class FakeASR:
 
     def transcribe(self, job, *_):
         return [{"start": job.start, "end": job.start + 1, "text": "会议文字", "source": job.source}]
+
+
+async def test_final_transcript_is_saved_for_summary_without_partial_state(tmp_path):
+    class FinalASR:
+        def transcribe(self, job, *_):
+            return [{"start": 0, "end": 0.6, "text": "今天开会。", "source": "mic"}]
+
+    store = Storage(tmp_path)
+    session = Session(StartRequest(), store, configured(tmp_path), FinalASR(), RecordingSummarizer())
+    session.status = "recording"
+    session.offer(AudioJob(np.ones(3200), 0, "mic"))
+    session.jobs.put_nowait(None)
+    await session.consume()
+    assert "partial" not in session.snapshot()
+    assert store.segments(session.id)[0]["text"] == "今天开会。"
+    await session.summarize()
+    assert store.summary(session.id) is not None
 
 
 class RecordingSummarizer:
@@ -35,7 +58,7 @@ class RecordingSummarizer:
 
 
 async def test_ai_names_only_an_unnamed_meeting(tmp_path):
-    store, config, llm = Storage(tmp_path), ConfigStore(tmp_path), RecordingSummarizer()
+    store, config, llm = Storage(tmp_path), configured(tmp_path), RecordingSummarizer()
     llm.title = "会议标题：顺丰接口联调。"
     unnamed = Session(StartRequest(), store, config, FakeASR(), llm)
     store.add_segment(unnamed.id, 0, 5, "讨论顺丰接口联调计划", "mic")
@@ -50,7 +73,7 @@ async def test_ai_names_only_an_unnamed_meeting(tmp_path):
 
 
 async def test_incremental_summary_retries_without_advancing_cursor(tmp_path):
-    store, config, llm = Storage(tmp_path), ConfigStore(tmp_path), RecordingSummarizer()
+    store, config, llm = Storage(tmp_path), configured(tmp_path), RecordingSummarizer()
     session = Session(StartRequest(), store, config, FakeASR(), llm)
     first = store.add_segment(session.id, 0, 1, "第一次", "mic")
     await session.summarize()
@@ -79,7 +102,7 @@ async def test_stop_drains_last_chunk_before_final_summary(tmp_path, monkeypatch
             self.on_job(AudioJob(np.ones(16000), 1, "mic"))
     monkeypatch.setattr("meeting_assistant.session.Capture", FakeCapture)
     store, llm = Storage(tmp_path), RecordingSummarizer()
-    session = Session(StartRequest(), store, ConfigStore(tmp_path), FakeASR(), llm)
+    session = Session(StartRequest(), store, configured(tmp_path), FakeASR(), llm)
     session.start()
     for _ in range(100):
         if len(store.segments(session.id)) == 1:
@@ -100,7 +123,7 @@ async def test_stop_during_model_load_never_opens_microphone(tmp_path, monkeypat
     def forbidden(*args, **kwargs):
         pytest.fail("Capture must not start after cancellation")
     monkeypatch.setattr("meeting_assistant.session.Capture", forbidden)
-    session = Session(StartRequest(), Storage(tmp_path), ConfigStore(tmp_path), SlowASR(), RecordingSummarizer())
+    session = Session(StartRequest(), Storage(tmp_path), configured(tmp_path), SlowASR(), RecordingSummarizer())
     session.start()
     await asyncio.sleep(0.01)
     session.stop()
@@ -123,7 +146,7 @@ def test_process_restart_recovers_interrupted_meeting(tmp_path):
 async def test_key_events_within_the_delay_make_one_summary(tmp_path, monkeypatch):
     monkeypatch.setattr("meeting_assistant.session.TRIGGER_DELAY", 0.05)
     store, llm = Storage(tmp_path), RecordingSummarizer()
-    session = Session(StartRequest(), store, ConfigStore(tmp_path), FakeASR(), llm)
+    session = Session(StartRequest(), store, configured(tmp_path), FakeASR(), llm)
     segment = store.add_segment(session.id, 0, 1, "先听着", "mic")
     session.arm_early_summary()
     session.arm_early_summary()
@@ -137,7 +160,7 @@ async def test_key_events_within_the_delay_make_one_summary(tmp_path, monkeypatc
 
 async def test_reconcile_sends_recent_window_and_cited_history(tmp_path):
     store, llm = Storage(tmp_path), RecordingSummarizer()
-    session = Session(StartRequest(), store, ConfigStore(tmp_path), FakeASR(), llm)
+    session = Session(StartRequest(), store, configured(tmp_path), FakeASR(), llm)
     first = store.add_segment(session.id, 0, 10, "京东由管理员分配", "mic")
     store.add_segment(session.id, 20, 400, "中间过程", "mic")
     latest = store.add_segment(session.id, 900, 1000, "顺丰改到下周", "mic")
@@ -151,7 +174,7 @@ async def test_reconcile_sends_recent_window_and_cited_history(tmp_path):
 
 async def test_reconcile_catches_up_unsummarized_old_audio_before_advancing(tmp_path):
     store, llm = Storage(tmp_path), RecordingSummarizer()
-    session = Session(StartRequest(), store, ConfigStore(tmp_path), FakeASR(), llm)
+    session = Session(StartRequest(), store, configured(tmp_path), FakeASR(), llm)
     first = store.add_segment(session.id, 0, 10, "早期决定", "mic")
     last = store.add_segment(session.id, 1800, 1810, "服务恢复后的内容", "mic")
     await session.summarize(mode="reconcile")
@@ -162,7 +185,7 @@ async def test_reconcile_catches_up_unsummarized_old_audio_before_advancing(tmp_
 
 async def test_failed_reconcile_catchup_keeps_cursor_for_retry(tmp_path):
     store, llm = Storage(tmp_path), RecordingSummarizer()
-    session = Session(StartRequest(), store, ConfigStore(tmp_path), FakeASR(), llm)
+    session = Session(StartRequest(), store, configured(tmp_path), FakeASR(), llm)
     first = store.add_segment(session.id, 0, 10, "早期决定", "mic")
     store.add_segment(session.id, 1800, 1810, "较晚内容", "mic")
     llm.fail = True
@@ -177,10 +200,9 @@ async def test_failed_reconcile_catchup_keeps_cursor_for_retry(tmp_path):
 async def test_partial_model_state_preserves_saved_summary(tmp_path):
     import httpx
     from meeting_assistant.summary import Summarizer
-    llm = Summarizer(httpx.MockTransport(lambda _: httpx.Response(200, json={"message": {"content": '{"summary":"不完整"}'}})))
+    llm = Summarizer(httpx.MockTransport(lambda _: httpx.Response(200, json={"choices": [{"message": {"content": '{"summary":"不完整"}'}}]})))
     store = Storage(tmp_path)
-    config = ConfigStore(tmp_path)
-    config.settings.summary_provider = "ollama"
+    config = configured(tmp_path)
     session = Session(StartRequest(), store, config, FakeASR(), llm)
     first = store.add_segment(session.id, 0, 10, "任务", "mic")
     old = store.add_summary(session.id, first["id"], {"summary": "已有内容", "topics": [], "key_points": [], "todos": [{"content": "不能丢失", "sources": [first["id"]]}], "suggestions": []})

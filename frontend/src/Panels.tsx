@@ -31,6 +31,7 @@ export function Panels({ meeting, state, title, titleDisabled, statusLabel, onTi
   const segments = meeting?.segments ?? [];
   const content = meeting?.summary?.content;
   const latest = segments.at(-1);
+  const liveText = latest?.text;
   const recording = state?.status === 'recording';
   const fresh = meeting?.summary ? Date.now() - new Date(meeting.summary.created_at).getTime() < 90_000 : false;
   useEffect(() => {
@@ -103,9 +104,9 @@ export function Panels({ meeting, state, title, titleDisabled, statusLabel, onTi
     </section>
     <section className="panel transcript-panel" aria-label="实时转写">
       <div className="panel-header"><h2><FileText size={22}/>实时转写</h2><span>{segments.length} 条记录</span></div>
-      <div className="live-strip"><div className="live-meta"><time>{clock(duration)}</time><span className={recording ? 'live-pill on' : 'live-pill'}>{recording ? '录制中' : '转写'}</span></div><div className="live-wave" aria-hidden="true"><span style={{ width: `${Math.min(100, (state?.level ?? 0) * 1200)}%` }}/></div><p>{latest?.text ?? '开始后，最新一句会显示在这里。'}</p></div>
+      <div className="live-strip"><div className="live-meta"><time>{clock(duration)}</time><span className={recording ? 'live-pill on' : 'live-pill'}>{recording ? '录制中' : '转写'}</span></div><div className="live-wave" aria-hidden="true"><span style={{ width: `${Math.min(100, (state?.level ?? 0) * 1200)}%` }}/></div><p>{liveText ?? '开始后，最新一句会显示在这里。'}</p></div>
       <div className="transcript-body" ref={scroll} onScroll={() => { const el = scroll.current!; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 65; setShowFollow(!follow.current); }}>
-        {segments.length ? <ol className="transcript-list">{segments.map(segment => <li key={segment.id} id={`segment-${segment.id}`} className={highlight === segment.id ? 'highlight' : ''}><div className="segment-meta"><time>{clock(segment.start)}</time><span>{segment.source === 'mic' ? '麦克风' : '系统声音'}</span></div><p>{segment.text}</p></li>)}</ol> : <div className="empty-transcript"><Mic size={48} strokeWidth={1.5}/><h3>{state?.status === 'recording' ? '正在聆听…' : state?.status === 'starting' ? '正在准备语音模型…' : '从第一句话开始'}</h3><p>{state?.status === 'recording' ? '请开始讲话，识别后的文字会自动出现在这里。' : state?.status === 'starting' ? '首次使用需要下载模型，准备完成后才会开始录音。' : '开始会议后，转写内容会按时间显示在这里。'}</p></div>}
+        {segments.length ? <ol className="transcript-list">{segments.map(segment => <li key={segment.id} id={`segment-${segment.id}`} className={highlight === segment.id ? 'highlight' : ''}><div className="segment-meta"><time>{clock(segment.start)}</time><span>{segment.source === 'mic' ? '麦克风' : '系统声音'}</span></div><p>{segment.text}</p></li>)}</ol> : <div className="empty-transcript"><Mic size={48} strokeWidth={1.5}/><h3>{state?.status === 'recording' ? '正在聆听…' : state?.status === 'starting' ? '正在加载语音模型…' : '从第一句话开始'}</h3><p>{state?.status === 'recording' ? '请开始讲话，识别后的文字会自动出现在这里。' : state?.status === 'starting' ? '首次开始会议时会加载安装包内的模型。' : '开始会议后，转写内容会按时间显示在这里。'}</p></div>}
       </div>
       {showFollow && <button className="follow-button" onClick={() => { follow.current = true; setShowFollow(false); setHighlight(null); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' }); }}><ArrowDown size={14}/>回到最新</button>}
     </section>

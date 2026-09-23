@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import secrets
 from contextlib import asynccontextmanager
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,7 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .asr import Transcriber
 from .audio import devices
-from .config import ConfigStore, DATA, ROOT, SettingsUpdate
+from .config import ConfigStore, DATA, FRONTEND_DIST, SettingsUpdate
 from .session import Session, StartRequest
 from .storage import Storage
 from .summary import Summarizer
@@ -62,12 +65,25 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class ModelDownloadRequest(BaseModel):
+    model: Literal["base", "small", "medium"] | None = None
+
+
 def create_app(folder=DATA, transcriber=None, summarizer=None):
     store, config = Storage(folder), ConfigStore(folder)
     asr, summary = transcriber or Transcriber(), summarizer or Summarizer()
     sessions: dict[str, Session] = {}
     pending: set[asyncio.Task] = set()
     start_lock = asyncio.Lock()
+    desktop = os.environ.get("MEETING_ASSISTANT_DESKTOP") == "1"
+    desktop_token = os.environ.get("MEETING_ASSISTANT_DESKTOP_TOKEN", "")
+    desktop_port = int(os.environ.get("MEETING_ASSISTANT_PORT", "0") or 0)
+    try:
+        dev_frontend_port = int(os.environ.get("MEETING_ASSISTANT_DEV_FRONTEND_PORT", "0") or 0) if desktop else 0
+        if not 1 <= dev_frontend_port <= 65535:
+            dev_frontend_port = 0
+    except ValueError:
+        dev_frontend_port = 0
 
     def spawn(coro):
         task = asyncio.create_task(coro)
@@ -104,16 +120,24 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
 
     app = FastAPI(title="MeetingAssistant", lifespan=lifespan)
     app.state.store, app.state.sessions, app.state.config = store, sessions, config
+    app.state.desktop = desktop
+    if desktop and not desktop_token:
+        raise RuntimeError("Electron desktop mode requires a per-launch access token")
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
     @app.middleware("http")
     async def local_origin(request: Request, call_next):
         origin = request.headers.get("origin")
+        if desktop and request.url.path.startswith("/api"):
+            supplied = request.cookies.get("ma_session", "")
+            if not secrets.compare_digest(supplied, desktop_token):
+                return JSONResponse({"detail": "桌面会话已失效，请重新打开 MeetingAssistant"}, status_code=401)
         # Reject browser requests from unrelated websites to this local microphone service.
         if origin:
             try:
                 parsed = urlparse(origin)
-                allowed = parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost") and parsed.port in (8766, 5179)
+                allowed_ports = {desktop_port, dev_frontend_port} if desktop else {8766, 5179}
+                allowed = parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost") and parsed.port in allowed_ports
             except ValueError:
                 allowed = False
             if not allowed:
@@ -125,8 +149,25 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
 
     @app.get("/api/health")
     async def health():
-        return {"ok": True, "asr": {"status": asr.status, "error": asr.error, "model": asr.signature[0] if asr.signature else None},
+        signature = getattr(asr, "signature", None)
+        return {"ok": True, "asr": {"status": asr.status, "error": asr.error, "model": signature[1] if signature else None},
+                "model": asr.model_info(config.settings.asr_model),
                 "active_meeting": active().id if active() else None}
+
+    @app.post("/api/model/download")
+    async def download_model(request: ModelDownloadRequest | None = None):
+        model = request.model if request and request.model else config.settings.asr_model
+        if active() or asr.status == "loading":
+            raise HTTPException(409, "请在会议结束后下载或准备语音模型")
+        info = asr.model_info(model)
+        if info["installed"]:
+            return {"ok": True}
+        if asr.status == "downloading":
+            if getattr(asr, "operation_model", model) != model:
+                raise HTTPException(409, "另一个语音模型正在下载，请等待完成后再试")
+            return {"ok": True}
+        spawn(asr.download(model))
+        return {"ok": True}
 
     @app.get("/api/settings")
     async def get_settings():
@@ -134,7 +175,7 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
 
     @app.put("/api/settings")
     async def save_settings(update: SettingsUpdate):
-        if active() or any(s.summary_busy for s in sessions.values()) or asr.status == "loading":
+        if active() or any(s.summary_busy for s in sessions.values()) or asr.status in ("loading", "downloading"):
             raise HTTPException(409, "请等待当前录音、摘要或模型加载完成后再修改配置")
         config.save(update)
         return config.public()
@@ -145,14 +186,6 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
             await summary.test(update, config.key if update.api_key is None else update.api_key)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
-        return {"ok": True}
-
-    @app.post("/api/model/prepare")
-    async def prepare():
-        if active():
-            raise HTTPException(409, "当前正在录音")
-        if asr.status != "loading":
-            spawn(asr.prepare(config.settings.model_copy()))
         return {"ok": True}
 
     @app.get("/api/devices")
@@ -171,6 +204,11 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
         async with start_lock:
             if active():
                 raise HTTPException(409, "已有会议正在录音或收尾")
+            if asr.status in ("downloading", "loading"):
+                raise HTTPException(409, "请等待语音模型完成下载或加载后再开始会议")
+            model = asr.model_info(config.settings.asr_model)
+            if not model["installed"]:
+                raise HTTPException(409, f"请先在设置中下载 {model['name']} 模型（{model['size_label']}）")
             session = Session(body, store, config, asr, summary)
             sessions[session.id] = session
             session.start()
@@ -240,7 +278,28 @@ def create_app(folder=DATA, transcriber=None, summarizer=None):
         meeting = require(mid)
         return Response(render_markdown(meeting), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="meeting-{mid[:8]}.md"'})
 
-    dist = ROOT / "frontend" / "dist"
+    @app.post("/api/desktop/shutdown")
+    async def desktop_shutdown():
+        if not desktop:
+            raise HTTPException(404, "桌面退出接口仅在 Electron 模式开放")
+        current = active()
+        if current:
+            current.stop()
+            try:
+                await asyncio.wait_for(asyncio.shield(current.done.wait()), timeout=45)
+            except asyncio.TimeoutError:
+                # Captured WAV files are already flushed by the capture threads;
+                # exit anyway rather than leaving an orphan process indefinitely.
+                pass
+        in_flight = [task for task in pending if task is not asyncio.current_task()]
+        if in_flight:
+            await asyncio.wait(in_flight, timeout=20)
+        callback = getattr(app.state, "request_shutdown", None)
+        if callback:
+            asyncio.get_running_loop().call_later(0.25, callback)
+        return {"ok": True, "graceful": current is None or current.done.is_set()}
+
+    dist = FRONTEND_DIST
     if dist.exists():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
     return app

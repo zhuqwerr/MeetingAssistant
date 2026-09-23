@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, Clock3, FileText, RefreshCw } from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock3, Download, FileText, RefreshCw } from 'lucide-react';
 import { useMemo } from 'react';
 import { clock } from './api';
 import type { MeetingListItem, SummaryContent } from './types';
@@ -45,15 +45,18 @@ export function HistoryView({ meetings, loading, onOpen, onRefresh }: HistoryVie
     </header>
     {groups.length ? <div className="history-groups">{groups.map(([label, items]) => <section className="history-group" key={label}>
       <h2>{label}<span>{items.length} 场会议</span></h2>
-      <div className="history-cards">{items.map(item => <button className="history-card" key={item.id} onClick={() => onOpen(item.id)}>
-        <span className="history-card-icon"><FileText size={19}/></span>
-        <span className="history-card-content">
-          <span className="history-card-title">{item.title || '未命名会议'}</span>
-          <span className="history-card-meta"><span><CalendarDays size={13}/>{new Date(item.created_at).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span><span><Clock3 size={13}/>{clock(item.duration)}</span></span>
-          <span className="history-card-summary">{summaryText(item.summary?.content)}</span>
-        </span>
-        <span className="history-card-open">查看记录<ArrowRight size={15}/></span>
-      </button>)}</div>
+      <div className="history-cards">{items.map(item => <article className="history-card" key={item.id}>
+        <button className="history-card-main" type="button" onClick={() => onOpen(item.id)} aria-label={`查看会议：${item.title || '未命名会议'}`}>
+          <span className="history-card-icon"><FileText size={19}/></span>
+          <span className="history-card-content">
+            <span className="history-card-title">{item.title || '未命名会议'}</span>
+            <span className="history-card-meta"><span><CalendarDays size={13}/>{new Date(item.created_at).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span><span><Clock3 size={13}/>{clock(item.duration)}</span></span>
+            <span className="history-card-summary">{summaryText(item.summary?.content)}</span>
+          </span>
+          <span className="history-card-open">查看记录<ArrowRight size={15}/></span>
+        </button>
+        <a className="history-card-download" href={`/api/meetings/${item.id}/export`} download aria-label={`下载会议纪要：${item.title || '未命名会议'}`} title="下载会议纪要"><Download size={16}/><span>下载纪要</span></a>
+      </article>)}</div>
     </section>)}</div> : <div className="history-page-empty"><span><FileText size={28}/></span><h2>还没有会议记录</h2><p>开始第一场会议后，摘要和转写会保存在这里。</p></div>}
   </section>;
 }

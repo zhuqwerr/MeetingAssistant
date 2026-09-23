@@ -5,76 +5,32 @@ import ctypes
 import json
 import os
 import sys
-import subprocess
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("MEETING_ASSISTANT_ROOT", Path(__file__).resolve().parent.parent))
 DATA = Path(os.environ.get("MEETING_ASSISTANT_DATA", ROOT / "data"))
-
-
-def cuda_runtime_installed() -> bool:
-    """True when the Windows CUDA wheels are installed. Does not load native libraries."""
-    if sys.platform != "win32":
-        return False
-    for root in sys.path:
-        vendor = Path(root) / "nvidia"
-        if not vendor.is_dir():
-            continue
-        names = {path.parent.name.lower() for path in vendor.glob("*/bin")}
-        if any(name.startswith("cublas") for name in names) and any("cudnn" in name for name in names):
-            return True
-    return False
-
-
-@lru_cache(maxsize=1)
-def cuda_device_usable() -> bool:
-    """Probe the driver in a bounded child process, never in the web server."""
-    probe = """
-import ctypes
-import ctranslate2
-assert ctranslate2.get_cuda_device_count() > 0
-assert 'float16' in ctranslate2.get_supported_compute_types('cuda')
-driver = ctypes.WinDLL('nvcuda.dll')
-assert driver.cuInit(0) == 0
-size = ctypes.c_size_t()
-assert driver.cuDeviceTotalMem_v2(ctypes.byref(size), 0) == 0
-assert size.value >= 4 * 1024**3
-print('ready')
-"""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", probe], capture_output=True, text=True, timeout=20,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-        )
-        return result.returncode == 0 and result.stdout.strip() == "ready"
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-
-
-def preferred_asr() -> tuple[str, str]:
-    # large-v3-turbo on CPU is slower than realtime, so it is only the default with CUDA.
-    if cuda_runtime_installed() and cuda_device_usable():
-        return "large-v3-turbo", "cuda"
-    return "small", "cpu"
+MODEL_DIR = Path(os.environ.get("MEETING_ASSISTANT_MODEL_DIR", ROOT / "models"))
+FRONTEND_DIST = Path(os.environ.get("MEETING_ASSISTANT_FRONTEND", ROOT / "frontend" / "dist"))
 
 
 class Settings(BaseModel):
-    asr_model: Literal["tiny", "base", "small", "medium", "large-v3-turbo"] = "small"
-    asr_device: Literal["cpu", "cuda"] = "cpu"
-    summary_provider: Literal["ollama", "compatible"] = "ollama"
-    summary_url: str = "http://127.0.0.1:11434"
-    summary_model: str = Field(default="qwen3:4b", min_length=1, max_length=160)
-    summary_interval: int = Field(default=30, ge=10, le=300)
+    asr_model: Literal["base", "small", "medium"] = "medium"
+    summary_url: str = Field(default="", max_length=500)
+    summary_model: str = Field(default="", max_length=160)
+    # Stored as seconds for the scheduler, exposed in the UI as whole minutes.
+    summary_interval: int = Field(default=120, ge=60, le=3600, multiple_of=60)
     vocabulary: str = Field(default="", max_length=1500)
 
     @field_validator("summary_url")
     @classmethod
     def validate_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
         parsed = urlparse(value)
         if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("请输入不含密钥、查询参数的 HTTP(S) 服务地址")
@@ -113,21 +69,42 @@ class ConfigStore:
         self.key = os.environ.get("MEETING_ASSISTANT_API_KEY", "")
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding="utf-8"))
-            self.settings = Settings.model_validate(saved["settings"])
+            raw = dict(saved.get("settings", {}))
+            # Keep the user's valid Whisper size choice and migrate legacy engine
+            # selectors. Unsupported historic model names fall back to Medium.
+            if saved.get("schema_version", 0) < 2 and raw.get("summary_provider", "ollama") == "ollama":
+                raw["summary_url"] = ""
+                raw["summary_model"] = ""
+            if raw.get("asr_model") not in ("base", "small", "medium"):
+                raw["asr_model"] = "medium"
+            for key in ("asr_engine", "asr_device", "summary_provider"):
+                raw.pop(key, None)
+            if saved.get("schema_version", 0) < 4 and "summary_interval" in raw:
+                # Old releases stored second-based options. Map the old 30-second
+                # default to the new 2-minute default; round custom values to the
+                # nearest whole minute supported by the settings UI.
+                try:
+                    legacy_interval = int(raw["summary_interval"])
+                except (TypeError, ValueError):
+                    legacy_interval = 30
+                if legacy_interval == 30:
+                    raw["summary_interval"] = 120
+                else:
+                    rounded_interval = ((legacy_interval + 30) // 60) * 60
+                    raw["summary_interval"] = min(3600, max(60, rounded_interval))
+            self.settings = Settings.model_validate(raw)
             if saved.get("protected_key") and sys.platform == "win32":
                 self.key = protect(base64.b64decode(saved["protected_key"]), decrypt=True).decode()
-        else:
-            model, device = preferred_asr()
-            self.settings = Settings(asr_model=model, asr_device=device)
 
     def public(self):
-        return {**self.settings.model_dump(), "has_api_key": bool(self.key)}
+        return {**self.settings.model_dump(), "has_api_key": bool(self.key),
+                "summary_configured": bool(self.settings.summary_url and self.settings.summary_model)}
 
     def save(self, update: SettingsUpdate):
         settings = Settings.model_validate(update.model_dump())
         key = self.key if update.api_key is None else update.api_key.strip()
         encrypted = base64.b64encode(protect(key.encode())).decode() if key and sys.platform == "win32" else None
         temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"settings": settings.model_dump(), "protected_key": encrypted}, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.write_text(json.dumps({"schema_version": 4, "settings": settings.model_dump(), "protected_key": encrypted}, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(self.path)
         self.settings, self.key = settings, key

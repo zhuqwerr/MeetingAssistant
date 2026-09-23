@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field, field_validator
@@ -148,39 +149,63 @@ def _keep(sources: list[int], valid_ids: set[int]) -> list[int]:
     return list(dict.fromkeys(item for item in sources if item in valid_ids))
 
 
+def _visible_completion_text(payload: object) -> str:
+    if not isinstance(payload, dict):
+        raise ValueError("摘要接口响应格式不兼容，请检查服务地址")
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ValueError("摘要接口响应格式不兼容，请检查服务地址")
+    choice = choices[0]
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        raise ValueError("摘要接口响应格式不兼容，请检查服务地址")
+    text = message.get("content")
+    if isinstance(text, str) and text.strip():
+        return text
+
+    finish_reason = choice.get("finish_reason")
+    if finish_reason == "length":
+        raise ValueError("模型达到 max_tokens 上限前没有生成可见回答。请提高摘要 API 的 Max Tokens，或缩短本次输入后重试")
+    if finish_reason == "content_filter":
+        raise ValueError("模型输出被内容过滤器拦截，没有返回摘要")
+    if finish_reason == "tool_calls":
+        raise ValueError("模型返回了工具调用而不是文本；请使用支持纯文本 Chat Completions 的模型")
+
+    reasoning = message.get("reasoning_content") or message.get("reasoning")
+    if isinstance(reasoning, str) and reasoning.strip():
+        raise ValueError("模型只返回了思考内容，没有返回最终答案。请关闭思考模式，或提高 Max Tokens 后重试")
+    raise ValueError("模型返回空内容（choices[0].message.content 为空）。请确认模型接口返回了最终文本")
+
+
 class Summarizer:
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None):
         self.transport = transport
 
     async def chat(self, settings: Settings, key: str, messages: list[dict], structured: bool = True, schema: dict | None = None, max_tokens: int = 1400) -> str:
         base = settings.summary_url.rstrip("/")
+        if not base or not settings.summary_model.strip():
+            raise ValueError("请先在设置中填写兼容 Chat Completions 的 API 地址和模型名称。")
+        url = base if base.endswith("/chat/completions") else base + "/chat/completions"
         headers = {"Authorization": f"Bearer {key}"} if key else {}
-        if settings.summary_provider == "ollama":
-            url = base + "/api/chat"
-            body = {"model": settings.summary_model, "messages": messages, "stream": False, "think": False, "options": {"temperature": 0.1, "num_ctx": 8192, "num_predict": max_tokens}}
-            if structured:
-                body["format"] = schema or MeetingState.model_json_schema()
-        else:
-            url = base + "/chat/completions"
-            # Compatible reasoning models count hidden reasoning against
-            # max_tokens and can exhaust a small budget before producing content.
-            # Keep the JSON concise through the prompt and validated schema.
-            body = {"model": settings.summary_model, "messages": messages, "stream": False, "temperature": 0.1}
+        # Bound output size to keep summaries focused and API usage predictable.
+        body = {"model": settings.summary_model, "messages": messages, "stream": False,
+                "temperature": 0.1, "max_tokens": max_tokens}
+        if urlparse(base).hostname == "api.deepseek.com":
+            # DeepSeek enables thinking by default. For meeting summaries, reserve
+            # the bounded output budget for the visible answer instead of reasoning.
+            body["reasoning_effort"] = "none"
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=8), transport=self.transport, trust_env=False) as client:
                 response = await client.post(url, headers=headers, json=body)
                 response.raise_for_status()
                 payload = response.json()
-            text = payload["message"]["content"] if settings.summary_provider == "ollama" else payload["choices"][0]["message"]["content"]
-            if not isinstance(text, str) or not text.strip():
-                raise ValueError("模型返回空内容")
-            return text
+            return _visible_completion_text(payload)
         except httpx.HTTPStatusError as error:
             raise ValueError(f"摘要服务返回 HTTP {error.response.status_code}，请检查地址、模型名称和密钥") from None
         except httpx.TimeoutException:
-            raise ValueError("摘要服务超过 90 秒未响应，转写仍会继续。可切换较小模型后重试") from None
+            raise ValueError("摘要 API 超过 90 秒未响应，转写仍会继续。检查服务状态后可重试") from None
         except httpx.RequestError:
-            raise ValueError("无法连接摘要服务，请确认 Ollama 已启动或 API 地址可访问") from None
+            raise ValueError("无法连接摘要 API，请确认服务地址和网络连接") from None
         except (KeyError, IndexError, TypeError):
             raise ValueError("摘要接口响应格式不兼容，请检查服务地址") from None
 

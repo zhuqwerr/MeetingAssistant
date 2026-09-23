@@ -8,6 +8,13 @@ if (-not (Test-Path -LiteralPath '.venv/Scripts/python.exe')) {
 }
 & ./.venv/Scripts/python.exe -m pip install -r requirements-lock.txt
 if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
+# Upgrade environments created by the earlier experimental FunASR/GPU branch.
+$installedPackages = & ./.venv/Scripts/python.exe -m pip list --format=json | ConvertFrom-Json
+$obsoletePackages = @($installedPackages | Where-Object { $_.name -match '^(funasr|modelscope|modelscope-hub|torch|torchvision|torchaudio|kaldi-native-fbank|transformers|sentencepiece|nvidia-)' } | ForEach-Object { $_.name })
+if ($obsoletePackages.Count -gt 0) {
+    & ./.venv/Scripts/python.exe -m pip uninstall -y $obsoletePackages
+    if ($LASTEXITCODE -ne 0) { throw 'Could not remove obsolete FunASR/GPU runtime packages.' }
+}
 & ./.venv/Scripts/python.exe -m pip install -e . --no-deps
 if ($LASTEXITCODE -ne 0) { throw 'Backend installation failed.' }
 Push-Location frontend
